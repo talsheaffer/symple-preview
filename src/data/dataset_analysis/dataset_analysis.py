@@ -20,12 +20,14 @@ plt.savefig("difficulty.png")
 
 # @title node count expr vs node count simp
 
-df.plot(kind='scatter', x='node count expr', y='node count simp', s=32, alpha=.8)
+df.plot(kind='scatter', x='node count expr', y='node count simp', s=6, alpha=.8)
 plt.gca().spines[['top', 'right',]].set_visible(False)
+plt.gca().set_aspect('equal')
 plt.savefig("node_count_comp_vs_simp.png")
 
 # @title node count simp vs node count simplified
 
-df.plot(kind='scatter', x='node count simp', y='node count simplified', s=32, alpha=.8)
+df.plot(kind='scatter', x='node count simplified', y='node count simp', s=6, alpha=.8)
 plt.gca().spines[['top', 'right',]].set_visible(False)
+plt.gca().set_aspect('equal')
 plt.savefig("node_count_simp_vs_simplified.png")
