@@ -33,7 +33,7 @@ for config in configs:
     for _ in range(config["number of datapoints"]):
         esimp, ecomp = complicate(
             n=config["number of complications"],
-            rand_gen_args=(lambda rga: (rga[0], (randint(1, 5),) + rga[1]))(config["rand gen args"])
+            rand_gen_args=(lambda rga: (rga[0], (randint(1, 5),-randint(1,5)) + rga[1]))(config["rand gen args"])
         )
         secomp = simplify(ecomp)
         datapoints.append({
