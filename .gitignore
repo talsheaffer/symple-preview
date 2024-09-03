@@ -1,2 +1,4 @@
 # dont commit virtualenv
 .venv/
+*.DS_Store
+.idea/
