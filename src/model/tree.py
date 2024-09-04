@@ -9,8 +9,11 @@ ADD_TYPE = 0
 MUL_TYPE = 1
 DIV_TYPE = 2
 POW_TYPE = 3
-INT_NE_TYPE = 4
-INT_PO_TYPE = 5 # non-negative
+INT_NE_TYPE = 100
+INT_PO_TYPE = 101 # non-negative
+X_TYPE = 200
+Y_TYPE = 201
+Z_TYPE = 202
 
 TYPE_LIST = [
     ADD_TYPE,
@@ -19,7 +22,16 @@ TYPE_LIST = [
     POW_TYPE,
     INT_NE_TYPE,
     INT_PO_TYPE,
+    X_TYPE,
+    Y_TYPE,
+    Z_TYPE,
 ]
+
+SYMPY_SYMBOL_MAP = {
+    'x': X_TYPE,
+    'y': Y_TYPE,
+    'z': Z_TYPE,
+}
 
 ARG_NULL = 0
 
@@ -46,6 +58,8 @@ class ExprNode(object):
             return ExprNode(POW_TYPE, ARG_NULL)
         elif isinstance(expr, sp.Integer):
             return ExprNode(INT_NE_TYPE if expr < 0 else INT_PO_TYPE, int(expr))
+        elif isinstance(expr, sp.Symbol) and expr.name in SYMPY_SYMBOL_MAP:
+            return ExprNode(SYMPY_SYMBOL_MAP[expr.name], ARG_NULL)
         else:
             raise NotImplementedError(f'Unsupported expression type {type(expr)}')
 
