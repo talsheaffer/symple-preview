@@ -20,6 +20,7 @@ class SympleEmbedding(nn.Embedding):
         if input.type in (self.int_ne_type,self.int_po_type):
             input.embedding[-1] = input.arg
         input.embedding = input.embedding[None,:]
+        input.a, input.b = (self(child) if child is not None else None for child in input.children)
         return input
 
 
@@ -62,12 +63,6 @@ class BinaryTreeLSTM(nn.Module):
 #
 #
 # # debug
-# print(torch.zeros(8)[None,:].shape)
-#
-# lstm = nn.LSTM(8,16)
-# out, (h,c) = lstm(torch.zeros((4,8)), (torch.zeros((1,16)),torch.zeros((1,16))))
-# print(*(t.shape for t in (out,h,c)))
-#
 # btlstm = BinaryTreeLSTM(8, 8)
 # en = btlstm(en)
 # print(en.output)
