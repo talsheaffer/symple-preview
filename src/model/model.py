@@ -18,18 +18,8 @@ class SympleEmbedding(nn.Embedding):
         input.embedding = super(SympleEmbedding,self).forward(torch.tensor(input.type))
         if input.type in (self.int_ne_type,self.int_po_type):
             input.embedding[-1] = input.arg
+        input.embedding = input.embedding[None,:]
         return input
-
-# debugging
-# en = ExprNode(100,5)
-# se = SympleEmbedding(400,8)
-# en = se(en)
-# print(en.embedding)
-# print(se.weight.grad)
-# en.embedding.norm().backward()
-# print(se.weight.grad.any())
-
-
 
 
 class BinaryTreeLSTM(nn.LSTM):
@@ -41,19 +31,39 @@ class BinaryTreeLSTM(nn.LSTM):
             return input
         input.output, (input.hidden, input.cell) = super(BinaryTreeLSTM,self).forward(
             input.embedding, (
-                torch.cat((input.a.hidden,input.b.hidden)),
-                torch.cat((input.a.cell,input.b.cell))
+                torch.cat((input.a.hidden,input.b.hidden), dim = 1),
+                torch.cat((input.a.cell,input.b.cell), dim = 1)
             )
         )
+        input.a, input.b = self(input.a), self(input.b)
         return input
 
+
+
+# debugging
+# en = ExprNode(1,0,
+#               a = ExprNode(100,5, hidden=torch.zeros((1,8)), cell = torch.zeros((1,8))),
+#               b = ExprNode(101,5, hidden=torch.zeros((1,8)), cell = torch.zeros((1,8)))
+#               )
+# se = SympleEmbedding(400,8)
+# en = se(en)
+# print(en.embedding)
+# print(se.weight.grad)
+# en.embedding.norm().backward()
+# print(se.weight.grad.any())
+
+
 # debug
-# en.hidden = torch.zeros(8)
-# en.cell = en.hidden.clone()
-#
+# print(torch.zeros(8)[None,:].shape)
+
+# lstm = nn.LSTM(8,16)
+# out, (h,c) = lstm(torch.zeros((4,8)), (torch.zeros((1,16)),torch.zeros((1,16))))
+# print(*(t.shape for t in (out,h,c)))
+
 # btlstm = BinaryTreeLSTM(8, 8)
 # en = btlstm(en)
-# print(en)
+# print(en.output)
+
 
 
 
