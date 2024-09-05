@@ -52,13 +52,14 @@ class ExprNode(object):
     def __init__(
             self, type: int, arg: int,
             a: "ExprNode" = None, b: "ExprNode" = None, p: "ExprNode" = None,
-            hidden: "torch.tensor" = None, cell: "torch.tensor" = None,
+            embedding: "torch.tensor" = None, hidden: "torch.tensor" = None, cell: "torch.tensor" = None,
     ) -> None:
         self.type = type
         self.arg = arg
         self.a = a
         self.b = b
         self.p = p
+        self.embedding = embedding
         self.hidden = hidden
         self.cell = cell
 
