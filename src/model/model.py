@@ -5,7 +5,7 @@ import torch
 from torch import nn
 
 from model.model_default import DEFAULT_DEVICE, DEFAULT_DTYPE
-from src.model.tree import ExprBinaryTree, ExprNode
+from src.model.tree import ExprNode
 
 
 class BinaryTokenTreeModel(nn.Module):
@@ -22,7 +22,7 @@ class BinaryTokenTreeModel(nn.Module):
             num_layers=1,
         )
     
-    def forward(self, tree: ExprBinaryTree) -> Dict[ExprNode, torch.Tensor]:
+    def forward(self, tree: ExprNode) -> Dict[ExprNode, torch.Tensor]:
         out_map = dict()
         hc_map = dict()
 
