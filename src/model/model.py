@@ -2,11 +2,29 @@ from typing import Dict, List
 
 import sympy as sp
 import torch
-from torch import nn
+from torch import nn, Tensor
 
-from model.model_default import DEFAULT_DEVICE, DEFAULT_DTYPE
-from src.model.tree import ExprNode
+from model_default import DEFAULT_DEVICE, DEFAULT_DTYPE
+from tree import ExprNode, INT_NE_TYPE, INT_PO_TYPE
 
+class SympleEmbedding(nn.Embedding):
+    def __init__(self, *args, int_po_type: int = INT_PO_TYPE, int_ne_type: int = INT_NE_TYPE, **kwargs):
+        super(SympleEmbedding,self).__init__(*args, **kwargs)
+        self.int_po_type = int_po_type
+        self.int_ne_type = int_ne_type
+
+    def forward(self, input: "ExprNode") -> "ExprNode":
+        # t = input.to_tensor()
+        input.embedding = super(SympleEmbedding,self).forward(torch.tensor(input.type))
+        if input.type in (INT_NE_TYPE,INT_PO_TYPE):
+            input.embedding[-1] = input.arg
+        return input
+
+# # debugging
+# en = ExprNode(100,5)
+# se = SympleEmbedding(400,8)
+# en = se(en)
+# print(en.embedding)
 
 class BinaryTokenTreeModel(nn.Module):
     def __init__(self, embedding_dim: int, hidden_size: int) -> None:
