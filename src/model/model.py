@@ -23,28 +23,35 @@ class SympleEmbedding(nn.Embedding):
         return input
 
 
-class BinaryTreeLSTM(nn.LSTM):
-    def __init__(self, input_size: int, hidden_size: int, *args, **kwargs):
-        super(BinaryTreeLSTM,self).__init__(input_size, 2*hidden_size, *args,**kwargs)
+class BinaryTreeLSTM(nn.Module):
+    def __init__(self, input_size: int, hidden_size: int, *lstmargs, **lstmkwargs):
+        super(BinaryTreeLSTM,self).__init__()
+        self.input_size = input_size
+        self.hidden_size = hidden_size
+        self.lstm = nn.LSTM(input_size, 2*hidden_size, *lstmargs,**lstmkwargs)
 
     def forward(self, input: "ExprNode", depth = inf) -> "ExprNode":
         if input.a == None or input.b == None or depth <0:
+            if depth <0:
+                return input
+            input.hidden = torch.zeros((1,self.hidden_size))
+            input.cell = torch.zeros((1,self.hidden_size))
             return input
-        input.output, (input.hidden, input.cell) = super(BinaryTreeLSTM,self).forward(
+        input.a, input.b = self(input.a, depth = depth-1), self(input.b, depth = depth-1)
+        input.output, (input.hidden, input.cell) = self.lstm(
             input.embedding, (
                 torch.cat((input.a.hidden,input.b.hidden), dim = 1),
                 torch.cat((input.a.cell,input.b.cell), dim = 1)
             )
         )
-        input.a, input.b = self(input.a, depth = depth-1), self(input.b, depth = depth-1)
         return input
 
 
 
-# debugging
+# # debugging
 # en = ExprNode(1,0,
-#               a = ExprNode(100,5, hidden=torch.zeros((1,8)), cell = torch.zeros((1,8))),
-#               b = ExprNode(101,5, hidden=torch.zeros((1,8)), cell = torch.zeros((1,8)))
+#               a = ExprNode(100,5),
+#               b = ExprNode(101,5)
 #               )
 # se = SympleEmbedding(400,8)
 # en = se(en)
@@ -52,15 +59,15 @@ class BinaryTreeLSTM(nn.LSTM):
 # print(se.weight.grad)
 # en.embedding.norm().backward()
 # print(se.weight.grad.any())
-
-
-# debug
+#
+#
+# # debug
 # print(torch.zeros(8)[None,:].shape)
-
+#
 # lstm = nn.LSTM(8,16)
 # out, (h,c) = lstm(torch.zeros((4,8)), (torch.zeros((1,16)),torch.zeros((1,16))))
 # print(*(t.shape for t in (out,h,c)))
-
+#
 # btlstm = BinaryTreeLSTM(8, 8)
 # en = btlstm(en)
 # print(en.output)
