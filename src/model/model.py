@@ -6,6 +6,7 @@ from torch import nn, Tensor
 
 from model_default import DEFAULT_DEVICE, DEFAULT_DTYPE
 from tree import ExprNode, INT_NE_TYPE, INT_PO_TYPE
+from numpy import inf
 
 class SympleEmbedding(nn.Embedding):
     def __init__(self, *args, int_po_type: int = INT_PO_TYPE, int_ne_type: int = INT_NE_TYPE, **kwargs):
@@ -26,8 +27,8 @@ class BinaryTreeLSTM(nn.LSTM):
     def __init__(self, input_size: int, hidden_size: int, *args, **kwargs):
         super(BinaryTreeLSTM,self).__init__(input_size, 2*hidden_size, *args,**kwargs)
 
-    def forward(self, input: "ExprNode") -> "ExprNode":
-        if input.a == None or input.b == None:
+    def forward(self, input: "ExprNode", depth = inf) -> "ExprNode":
+        if input.a == None or input.b == None or depth <0:
             return input
         input.output, (input.hidden, input.cell) = super(BinaryTreeLSTM,self).forward(
             input.embedding, (
@@ -35,7 +36,7 @@ class BinaryTreeLSTM(nn.LSTM):
                 torch.cat((input.a.cell,input.b.cell), dim = 1)
             )
         )
-        input.a, input.b = self(input.a), self(input.b)
+        input.a, input.b = self(input.a, depth = depth-1), self(input.b, depth = depth-1)
         return input
 
 
