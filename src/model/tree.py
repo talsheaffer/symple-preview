@@ -4,7 +4,7 @@ from typing import Tuple
 import sympy as sp
 import torch
 
-from model.model_default import DEFAULT_DEVICE, DEFAULT_DTYPE
+from src.model.model_default import DEFAULT_DEVICE, DEFAULT_DTYPE
 
 ADD_TYPE = 0
 SUB_TYPE = 1
@@ -49,11 +49,19 @@ SYMPY_SYMBOL_MAP = {
 ARG_NULL = 0        
 
 class ExprNode(object):
-    def __init__(self, type: int, arg: int, a: "ExprNode", b: "ExprNode") -> None:
+    def __init__(
+            self, type: int, arg: int,
+            a: "ExprNode" = None, b: "ExprNode" = None, p: "ExprNode" = None,
+            hidden: "torch.tensor" = None, cell: "torch.tensor" = None,
+    ) -> None:
         self.type = type
         self.arg = arg
         self.a = a
         self.b = b
+        self.p = p
+        self.hidden = hidden
+        self.cell = cell
+
 
     def topological_sort(self) -> list:
         if self.a is None and self.b is None:
