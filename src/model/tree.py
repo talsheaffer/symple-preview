@@ -65,7 +65,9 @@ class ExprNode(object):
         self.cell = cell
         self.output = output
 
-
+    @property
+    def children(self):
+        return (self.a, self.b)
     def topological_sort(self) -> list:
         if self.a is None and self.b is None:
             return [self.root]
