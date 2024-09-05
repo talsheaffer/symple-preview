@@ -16,15 +16,46 @@ class SympleEmbedding(nn.Embedding):
     def forward(self, input: "ExprNode") -> "ExprNode":
         # t = input.to_tensor()
         input.embedding = super(SympleEmbedding,self).forward(torch.tensor(input.type))
-        if input.type in (INT_NE_TYPE,INT_PO_TYPE):
+        if input.type in (self.int_ne_type,self.int_po_type):
             input.embedding[-1] = input.arg
         return input
 
-# # debugging
+# debugging
 # en = ExprNode(100,5)
 # se = SympleEmbedding(400,8)
 # en = se(en)
 # print(en.embedding)
+# print(se.weight.grad)
+# en.embedding.norm().backward()
+# print(se.weight.grad.any())
+
+
+
+
+class BinaryTreeLSTM(nn.LSTM):
+    def __init__(self, input_size: int, hidden_size: int, *args, **kwargs):
+        super(BinaryTreeLSTM,self).__init__(input_size, 2*hidden_size, *args,**kwargs)
+
+    def forward(self, input: "ExprNode") -> "ExprNode":
+        if input.a == None or input.b == None:
+            return input
+        input.output, (input.hidden, input.cell) = super(BinaryTreeLSTM,self).forward(
+            input.embedding, (
+                torch.cat((input.a.hidden,input.b.hidden)),
+                torch.cat((input.a.cell,input.b.cell))
+            )
+        )
+        return input
+
+# debug
+# en.hidden = torch.zeros(8)
+# en.cell = en.hidden.clone()
+#
+# btlstm = BinaryTreeLSTM(8, 8)
+# en = btlstm(en)
+# print(en)
+
+
 
 class BinaryTokenTreeModel(nn.Module):
     def __init__(self, embedding_dim: int, hidden_size: int) -> None:
