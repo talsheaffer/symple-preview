@@ -8,15 +8,16 @@ from model_default import DEFAULT_DEVICE, DEFAULT_DTYPE
 from tree import ExprNode, INT_NE_TYPE, INT_PO_TYPE
 from numpy import inf
 
-class SympleEmbedding(nn.Embedding):
-    def __init__(self, *args, int_po_type: int = INT_PO_TYPE, int_ne_type: int = INT_NE_TYPE, **kwargs):
-        super(SympleEmbedding,self).__init__(*args, **kwargs)
+class SympleEmbedding(nn.Module):
+    def __init__(self, *embedargs, int_po_type: int = INT_PO_TYPE, int_ne_type: int = INT_NE_TYPE, **embedkwargs):
+        super(SympleEmbedding,self).__init__()
         self.int_po_type = int_po_type
         self.int_ne_type = int_ne_type
+        self.embedding = nn.Embedding(*embedargs, **embedkwargs)
 
     def forward(self, input: "ExprNode") -> "ExprNode":
         # t = input.to_tensor()
-        input.embedding = super(SympleEmbedding,self).forward(torch.tensor(input.type))
+        input.embedding = self.embedding(torch.tensor(input.type))
         if input.type in (self.int_ne_type,self.int_po_type):
             input.embedding[-1] = input.arg
         input.embedding = input.embedding[None,:]
