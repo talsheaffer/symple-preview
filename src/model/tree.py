@@ -4,7 +4,7 @@ from typing import Tuple
 import sympy as sp
 import torch
 
-from model.model_default import DEFAULT_DEVICE, DEFAULT_DTYPE
+from src.model.model_default import DEFAULT_DEVICE, DEFAULT_DTYPE
 
 ADD_TYPE = 0
 SUB_TYPE = 1
@@ -49,19 +49,31 @@ SYMPY_SYMBOL_MAP = {
 ARG_NULL = 0        
 
 class ExprNode(object):
-    def __init__(self, type: int, arg: int, a: "ExprNode", b: "ExprNode") -> None:
+    def __init__(
+            self, type: int, arg: int,
+            a: "ExprNode" = None, b: "ExprNode" = None, p: "ExprNode" = None,
+            embedding: "torch.tensor" = None, hidden: "torch.tensor" = None,
+            cell: "torch.tensor" = None,
+    ) -> None:
         self.type = type
         self.arg = arg
         self.a = a
         self.b = b
+        self.p = p
+        self.embedding = embedding
+        self.hidden = hidden
+        self.cell = cell
 
+    @property
+    def children(self):
+        return (self.a, self.b)
     def topological_sort(self) -> list:
         if self.a is None and self.b is None:
-            return [self.root]
+            return [self]
         elif self.b is None:
-            return self.a.to_list() + [self.root]
+            return self.a.topological_sort() + [self]
         else:
-            return self.a.to_list() + self.b.to_list() + [self.root]
+            return self.a.topological_sort() + self.b.topological_sort() + [self]
 
     @classmethod
     def from_sympy(cls, expr: sp.Expr) -> "ExprNode":
@@ -79,36 +91,26 @@ class ExprNode(object):
             type_, arg = SYMPY_SYMBOL_MAP[expr.name], ARG_NULL
         else:
             raise NotImplementedError(f'Unsupported expression type {type(expr)}')
-        
+
         if isinstance(expr, (sp.Add, sp.Mul)):
             a = cls.from_sympy(expr.args[0])
             b = cls.from_sympy(
-                type(expr)(*expr.args[1:], evalulate=True) 
-                if len(expr.args) > 2 
-                else expr.args[1]
-            )
-            return ExprNode(
-                type_=type_,
-                arg=arg,
-                a=cls.from_sympy(a),
-                b=cls.from_sympy(b),
+                expr.func(*expr.args[1:], evaluate=True)
+                # if len(expr.args) > 2
+                # else expr.args[1]
             )
         elif isinstance(expr, sp.Pow):
-            return ExprNode(
-                type_=type_,
-                arg=arg,
-                a=cls.from_sympy(expr.args[0]),
-                b=cls.from_sympy(expr.args[1]),
-            )
-        elif isinstance(expr, sp.Integer):
-            return ExprNode(
-                type_=type_,
-                arg=arg,
-                a=None, 
-                b=None,
-            )
+            a=cls.from_sympy(expr.args[0])
+            b=cls.from_sympy(expr.args[1])
         else:
-            raise NotImplementedError(f'Unsupported expression type {type(expr)}')
+            a = None
+            b = None
+        return ExprNode(
+            type =type_,
+            arg=arg,
+            a=a,
+            b=b,
+        )
 
     def to_tensor(self, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE) -> torch.Tensor:
         tensor = torch.zeros((2,), device=device, dtype=dtype)
