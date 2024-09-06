@@ -95,28 +95,35 @@ class ExprNode(object):
         if isinstance(expr, (sp.Add, sp.Mul)):
             a = cls.from_sympy(expr.args[0])
             b = cls.from_sympy(
-                type(expr)(*expr.args[1:], evalulate=True) 
+                expr.func(*expr.args[1:], evaluate=True)
                 if len(expr.args) > 2 
                 else expr.args[1]
             )
             return ExprNode(
-                type_=type_,
+                type =type_,
                 arg=arg,
-                a=cls.from_sympy(a),
-                b=cls.from_sympy(b),
+                a=a,
+                b=b,
             )
         elif isinstance(expr, sp.Pow):
             return ExprNode(
-                type_=type_,
+                type =type_,
                 arg=arg,
                 a=cls.from_sympy(expr.args[0]),
                 b=cls.from_sympy(expr.args[1]),
             )
         elif isinstance(expr, sp.Integer):
             return ExprNode(
-                type_=type_,
+                type =type_,
                 arg=arg,
                 a=None, 
+                b=None,
+            )
+        elif isinstance(expr, sp.Symbol):
+            return ExprNode(
+                type =type_,
+                arg=arg,
+                a=None,
                 b=None,
             )
         else:
