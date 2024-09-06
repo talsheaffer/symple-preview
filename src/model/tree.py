@@ -53,7 +53,7 @@ class ExprNode(object):
             self, type: int, arg: int,
             a: "ExprNode" = None, b: "ExprNode" = None, p: "ExprNode" = None,
             embedding: "torch.tensor" = None, hidden: "torch.tensor" = None,
-            cell: "torch.tensor" = None, output: "torch.tensor" = None,
+            cell: "torch.tensor" = None,
     ) -> None:
         self.type = type
         self.arg = arg
@@ -63,7 +63,6 @@ class ExprNode(object):
         self.embedding = embedding
         self.hidden = hidden
         self.cell = cell
-        self.output = output
 
     @property
     def children(self):

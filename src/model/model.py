@@ -39,13 +39,14 @@ class BinaryTreeLSTM(nn.Module):
             input.cell = torch.zeros((1,self.hidden_size))
             return input
         input.a, input.b = self(input.a, depth = depth-1), self(input.b, depth = depth-1)
-        input.output, (input.hidden, input.cell) = self.lstm(
+        _, (input.hidden, input.cell) = self.lstm(
             input.embedding, (
                 torch.cat((input.a.hidden,input.b.hidden), dim = 1),
                 torch.cat((input.a.cell,input.b.cell), dim = 1)
             )
         )
         return input
+
 
 
 
@@ -65,7 +66,7 @@ class BinaryTreeLSTM(nn.Module):
 # # debug
 # btlstm = BinaryTreeLSTM(8, 8)
 # en = btlstm(en)
-# print(en.output)
+# print(en.hidden)
 
 
 
