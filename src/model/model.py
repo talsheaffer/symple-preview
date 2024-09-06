@@ -45,9 +45,14 @@ class BinaryTreeLSTM(nn.Module):
                 torch.cat((input.a.cell,input.b.cell), dim = 1)
             )
         )
+        input.hidden, input.cell = (v[:self.hidden_size] for v in (input.hidden, input.cell)) # Truncated to hidden size. Figure out how to use the other half, or avoid computing it.
         return input
 
 
+
+# x = sp.Symbol('x')
+# expr = sp.expand((x**2-x+1)**4)
+# en = ExprNode.from_sympy(expr)
 
 
 # # debugging
