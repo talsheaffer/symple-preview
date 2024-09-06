@@ -69,11 +69,11 @@ class ExprNode(object):
         return (self.a, self.b)
     def topological_sort(self) -> list:
         if self.a is None and self.b is None:
-            return [self.root]
+            return [self]
         elif self.b is None:
-            return self.a.to_list() + [self.root]
+            return self.a.topological_sort() + [self]
         else:
-            return self.a.to_list() + self.b.to_list() + [self.root]
+            return self.a.topological_sort() + self.b.topological_sort() + [self]
 
     @classmethod
     def from_sympy(cls, expr: sp.Expr) -> "ExprNode":
@@ -91,43 +91,26 @@ class ExprNode(object):
             type_, arg = SYMPY_SYMBOL_MAP[expr.name], ARG_NULL
         else:
             raise NotImplementedError(f'Unsupported expression type {type(expr)}')
-        
+
         if isinstance(expr, (sp.Add, sp.Mul)):
             a = cls.from_sympy(expr.args[0])
             b = cls.from_sympy(
                 expr.func(*expr.args[1:], evaluate=True)
-                if len(expr.args) > 2 
-                else expr.args[1]
-            )
-            return ExprNode(
-                type =type_,
-                arg=arg,
-                a=a,
-                b=b,
+                # if len(expr.args) > 2
+                # else expr.args[1]
             )
         elif isinstance(expr, sp.Pow):
-            return ExprNode(
-                type =type_,
-                arg=arg,
-                a=cls.from_sympy(expr.args[0]),
-                b=cls.from_sympy(expr.args[1]),
-            )
-        elif isinstance(expr, sp.Integer):
-            return ExprNode(
-                type =type_,
-                arg=arg,
-                a=None, 
-                b=None,
-            )
-        elif isinstance(expr, sp.Symbol):
-            return ExprNode(
-                type =type_,
-                arg=arg,
-                a=None,
-                b=None,
-            )
+            a=cls.from_sympy(expr.args[0])
+            b=cls.from_sympy(expr.args[1])
         else:
-            raise NotImplementedError(f'Unsupported expression type {type(expr)}')
+            a = None
+            b = None
+        return ExprNode(
+            type =type_,
+            arg=arg,
+            a=a,
+            b=b,
+        )
 
     def to_tensor(self, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE) -> torch.Tensor:
         tensor = torch.zeros((2,), device=device, dtype=dtype)
