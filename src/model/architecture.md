@@ -75,7 +75,15 @@ The actions come in a few types:
 
 6. What are the atomic operations and how to combine them? 
 
+# Possible imporvements
 
+1. global state information
+2. self attention
+2. "scaffolding" - extra graph edges - kinf of like self attention
+3. Composition of operations
+4. Selection of nodes for special attention
+5. Modify LSTM - traditional LSTM might not be totally appropriate
+6. Include sympy operations (e.g. factor)
 
 
 
