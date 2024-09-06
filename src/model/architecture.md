@@ -90,8 +90,11 @@ The actions come in a few types:
 4. Composition of operations
 5. Selection of nodes for special attention
 6. Modify LSTM - traditional LSTM might not be totally appropriate
-7. What is GRU about anyway?
-8. Include sympy operations (e.g. factor)
+7. Include sympy operations (e.g. factor)
 
 
+# Questions
 
+1. What are precisely the benefits of Actor-Critic?
+2. Monte-Carlo vs TD - Monte Carlo more stable (according to NeuRewriter guys)?
+3. What is GRU about anyway?
