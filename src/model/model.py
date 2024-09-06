@@ -45,21 +45,15 @@ class BinaryTreeLSTM(nn.Module):
                 torch.cat((input.a.cell,input.b.cell), dim = 1)
             )
         )
-        input.hidden, input.cell = (v[:self.hidden_size] for v in (input.hidden, input.cell)) # Truncated to hidden size. Figure out how to use the other half, or avoid computing it.
+        input.hidden, input.cell = (v[:,:self.hidden_size] for v in (input.hidden, input.cell)) # Truncated to hidden size. Figure out how to use the other half, or avoid computing it.
         return input
 
 
-
+# # debugging
+#
 # x = sp.Symbol('x')
 # expr = sp.expand((x**2-x+1)**4)
 # en = ExprNode.from_sympy(expr)
-
-
-# # debugging
-# en = ExprNode(1,0,
-#               a = ExprNode(100,5),
-#               b = ExprNode(101,5)
-#               )
 # se = SympleEmbedding(400,8)
 # en = se(en)
 # print(en.embedding)
@@ -68,10 +62,9 @@ class BinaryTreeLSTM(nn.Module):
 # print(se.weight.grad.any())
 #
 #
-# # debug
 # btlstm = BinaryTreeLSTM(8, 8)
 # en = btlstm(en)
-# print(en.hidden)
+# print(*(n.embedding for n in en.topological_sort()))
 
 
 
