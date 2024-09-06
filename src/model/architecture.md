@@ -17,10 +17,17 @@ Actor-Critic with a "model":
 --------------------------------------------
 
 The model (note: perhaps "model" is a bad name here. The "world" is directly visible to the agent, so perhaps this should be called "hidden state" or "latent representation"):
-
 * Embedding vectors for each node in the expression graph.
 * The vectors get "contextualized" by their neighbors. This can be done either by:
     * LSTM: either [graphical](https://aclanthology.org/P15-1150/) or sequential. In one LSTM step each node-vector gets contextuallized by immediate neighbors. When repeated, information propagates all over the graph. Can be applied to entire expression or to sub-expression, or even to a single node.
+      * $$ \begin{array}{ll} \\
+              i_t = \sigma(W_{ii} x_t + b_{ii} + W_{hi} h_{t-1} + b_{hi}) \\
+              f_t = \sigma(W_{if} x_t + b_{if} + W_{hf} h_{t-1} + b_{hf}) \\
+              g_t = \tanh(W_{ig} x_t + b_{ig} + W_{hg} h_{t-1} + b_{hg}) \\
+              o_t = \sigma(W_{io} x_t + b_{io} + W_{ho} h_{t-1} + b_{ho}) \\
+              c_t = f_t \odot c_{t-1} + i_t \odot g_t \\
+              h_t = o_t \odot \tanh(c_t) \\
+          \end{array} $$
     * Self-attention: As in transformer. Possibly better for long-distance relationships among distant parts of the expression. Probably more compute intensive.
 * In addition to node-vectors, additional metadata:
     * The simplifier's "position" (a subexpression).
@@ -79,11 +86,12 @@ The actions come in a few types:
 
 1. global state information
 2. self attention
-2. "scaffolding" - extra graph edges - kinf of like self attention
-3. Composition of operations
-4. Selection of nodes for special attention
-5. Modify LSTM - traditional LSTM might not be totally appropriate
-6. Include sympy operations (e.g. factor)
+3. "scaffolding" - extra graph edges - kinf of like self attention
+4. Composition of operations
+5. Selection of nodes for special attention
+6. Modify LSTM - traditional LSTM might not be totally appropriate
+7. What is GRU about anyway?
+8. Include sympy operations (e.g. factor)
 
 
 
