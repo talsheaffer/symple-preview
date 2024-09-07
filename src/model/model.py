@@ -62,23 +62,6 @@ class BinaryTreeLSTM(nn.Module):
         return input
 
 
-# # debugging
-#
-# x = sp.Symbol('x')
-# expr = sp.expand((x**2-x+1)**4)
-# en = ExprNode.from_sympy(expr)
-# se = SympleEmbedding(VOCAB_SIZE,8)
-# en = se(en)
-# print(en.embedding)
-# print(se.embedding.weight.grad)
-# en.embedding.norm().backward()
-# print(se.embedding.weight.grad.any())
-#
-#
-# btlstm = BinaryTreeLSTM(8, 8)
-# en = btlstm(en)
-# print(*(n.embedding for n in en.topological_sort()))
-
 
 class SympleAgent(nn.Module):
     """
