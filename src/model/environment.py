@@ -5,65 +5,87 @@ import torch
 from src.model.tree import ExprNode
 from src.utils import iota
 
+
+
+
+def apply_op_and_count(op_func):
+    def wrapper(expr: ExprNode) -> Tuple[ExprNode, int]:
+        initial_count = expr.node_count()
+        result = op_func(expr)
+        final_count = result.node_count()
+        reduction = initial_count - final_count
+        return result, reduction
+    return wrapper
+
+
 it = iota()
-OPS_MAP = list()
+OPS_MAP = []
 
 OP_FINISH = next(it)
-def op_finish(expr: ExprNode) -> ExprNode:
-    return expr
+def op_finish(expr: ExprNode) -> Tuple[ExprNode, int]:
+    return expr, 0
 OPS_MAP.append(op_finish)
 
 OP_MOVE_UP = next(it)
-def op_move_up(expr: ExprNode) -> ExprNode:
-    return expr.p
+def op_move_up(expr: ExprNode) -> Tuple[ExprNode, int]:
+    return expr.p, 0
 OPS_MAP.append(op_move_up)
 
 OP_MOVE_LEFT = next(it)    
-def op_move_left(expr: ExprNode) -> ExprNode:
-    return expr.a
+def op_move_left(expr: ExprNode) -> Tuple[ExprNode, int]:
+    return expr.a, 0
 OPS_MAP.append(op_move_left)
 
 OP_MOVE_RIGHT = next(it)
-def op_move_right(expr: ExprNode) -> ExprNode:
-    return expr.b
+def op_move_right(expr: ExprNode) -> Tuple[ExprNode, int]:
+    return expr.b, 0
 OPS_MAP.append(op_move_right)
 
 OP_PASS = next(it)
-def op_pass(expr: ExprNode) -> ExprNode:
-    return expr
+def op_pass(expr: ExprNode) -> Tuple[ExprNode, int]:
+    return expr, 0
 OPS_MAP.append(op_pass)
 
 OP_COMMUTE = next(it)
+@apply_op_and_count
 def op_commute(expr: ExprNode) -> ExprNode:
     return expr.commute()
 OPS_MAP.append(op_commute)
 
 OP_ASSOCIATE_B = next(it)
+@apply_op_and_count
 def op_associate_b(expr: ExprNode) -> ExprNode:
     return expr.associate_b()
 OPS_MAP.append(op_associate_b)
 
 OP_DISTRIBUTE_B = next(it)
+@apply_op_and_count
 def op_distribute_b(expr: ExprNode) -> ExprNode:
     return expr.distribute_b()
 OPS_MAP.append(op_distribute_b)
 
 OP_UNDISTRIBUTE_B = next(it)
+@apply_op_and_count
 def op_undistribute_b(expr: ExprNode) -> ExprNode:
     return expr.undistribute_b()
 OPS_MAP.append(op_undistribute_b)
 
 OP_REDUCE_UNIT = next(it)
+@apply_op_and_count
 def op_reduce_unit(expr: ExprNode) -> ExprNode:
     return expr.reduce_unit()
 OPS_MAP.append(op_reduce_unit)
 
 OP_CANCEL = next(it)
+@apply_op_and_count
 def op_cancel(expr: ExprNode) -> ExprNode:
     return expr.cancel()
 OPS_MAP.append(op_cancel)
 
 NUM_OPS = next(it)
+
+
+
 
 
 # Consider using Open-Ai Gym?
@@ -90,9 +112,7 @@ class Symple:
     def step(self, action: int) -> Tuple[float, bool]:
         reward = self.time_penalty
         
-        node_count_reduction = self.state.node_count()
-        self.state = OPS_MAP[action](self.state)
-        node_count_reduction -= self.state.node_count()
+        self.state, node_count_reduction = OPS_MAP[action](self.state)
         
         self.update_validity_mask()
         reward += self.node_count_importance_factor * node_count_reduction
