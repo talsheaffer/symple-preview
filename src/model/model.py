@@ -84,22 +84,28 @@ class SympleAgent(nn.Module):
         self.lstm = BinaryTreeLSTM(self.embedding_size, self.hidden_size)
         self.actor = FFN(self.hidden_size, self.hidden_size, self.num_ops)
 
+        self.temperature = 3
+
     def forward(self, env: Symple):
-        env.state = self.embedding(env.state)
-        env.state = self.lstm(env.state)
-        temperature = 3
         done = False
-        rewards = []
+        if self.training:
+            rewards = []
+            action_log_probs = []
+
         while not done:
+            env.state = self.embedding(env.state)
+            env.state = self.lstm(env.state)
             logits = self.actor(env.state.hidden)
             logits += torch.log(env.validity_mask)
 
-            probs = F.softmax(logits / temperature, dim=-1)
+            probs = F.softmax(logits / self.temperature, dim=-1)
             action = torch.multinomial(probs, 1).item()
             reward, done = env.step(action)
-            rewards.append(reward)
-            env.state = self.embedding(env.state)
-            env.state = self.lstm(env.state)
-
-        return rewards
+            if self.training:
+                rewards.append(reward)
+                action_log_probs.append(torch.log(probs[0, action]))
+        if self.training:
+            return rewards, action_log_probs, env
+        else:
+            return env
 
