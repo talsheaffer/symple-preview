@@ -1,5 +1,6 @@
 import torch.nn as nn
 import torch.nn.functional as F
+from torch import Tensor
 
 
 class DenseBlock(nn.Module):
@@ -10,7 +11,7 @@ class DenseBlock(nn.Module):
         self.linear = nn.Linear(self.input_size, self.output_size)
         self.dropout = dropout
 
-    def forward(self, input: "Tensor") -> "Tensor":
+    def forward(self, input: Tensor) -> Tensor:
         x = F.relu(self.linear(input))
         if self.training:
             x = F.dropout(x, p=self.dropout)
