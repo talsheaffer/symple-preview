@@ -1,5 +1,7 @@
 import numpy as np
 from sympy import Pow
+
+
 def leaf_count(expr):
     args = expr.args
     if args:
@@ -28,9 +30,13 @@ def get_coords(expr, depth=np.inf, height=0, exclude=[]):
     if "exponents" in exclude and expr.func == Pow:
         args = args[:-1]
     for i, a in args:
-        coords += [[i, ] + c for c in get_coords(
-            a, depth=depth - 1, height=height - 1
-        )]
+        coords += [
+            [
+                i,
+            ]
+            + c
+            for c in get_coords(a, depth=depth - 1, height=height - 1)
+        ]
     return coords
 
 
@@ -58,11 +64,15 @@ def map_on_subexpression(function, expr, coord, *funcargs, **funckwargs):
     """
     if coord:
         i = coord.pop(0)
-        return expr.func(*(
-                expr.args[:i] +
-                (map_on_subexpression(
-                    function, expr.args[i], coord, *funcargs, **funckwargs
-                ),) +
-                expr.args[i + 1:]
-        ))
+        return expr.func(
+            *(
+                expr.args[:i]
+                + (
+                    map_on_subexpression(
+                        function, expr.args[i], coord, *funcargs, **funckwargs
+                    ),
+                )
+                + expr.args[i + 1 :]
+            )
+        )
     return function(expr, *funcargs, **funckwargs)

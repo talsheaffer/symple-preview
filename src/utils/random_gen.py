@@ -16,23 +16,23 @@ def random_args(n, atoms, funcs, evaluate=True):
     return g
 
 
-def random_expr(ops, atoms, funcs=(), evaluate=True, inversion_prob=.1):
+def random_expr(ops, atoms, funcs=(), evaluate=True, inversion_prob=0.1):
     types = [Add, Mul]
     atoms = tuple(atoms)
     while 1:
-        e = (S.Zero)
+        e = S.Zero
         while e.count_ops() < ops:
             _ = choice(types)(
                 *random_args(randint(1, 3), atoms, funcs, evaluate=evaluate),
-                evaluate=evaluate
+                evaluate=evaluate,
             )
-            e = choice(types)(e, _ ** np.random.choice(
-                (1, -1),
-                p=(1 - inversion_prob, inversion_prob)
-            ),
-                              evaluate=evaluate
-                              )
-            if e is S.NaN: break
+            e = choice(types)(
+                e,
+                _ ** np.random.choice((1, -1), p=(1 - inversion_prob, inversion_prob)),
+                evaluate=evaluate,
+            )
+            if e is S.NaN:
+                break
         else:
             return e
 
@@ -45,7 +45,7 @@ def expr_grabber(l, *args, **kwargs):
     """
     l should have the form [None, (actual expressions)]
     """
-    prob = .1
+    prob = 0.1
 
     def random_from_list():
         p = np.ones(len(l)) * (1 - prob) / len(l)
@@ -57,9 +57,7 @@ def expr_grabber(l, *args, **kwargs):
 
 
 def random_coord(expr, **kwargs):
-    return choice(
-        get_coords(expr, **kwargs)
-    )
+    return choice(get_coords(expr, **kwargs))
 
 
 def random_subexpression(expr, **kwargs):

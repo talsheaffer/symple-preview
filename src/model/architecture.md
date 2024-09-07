@@ -86,11 +86,13 @@ The actions come in a few types:
 
 1. global state information
 2. self attention
-3. "scaffolding" - extra graph edges - kinf of like self attention
+3. "scaffolding" - extra graph edges - kind of like self attention
 4. Composition of operations
 5. Selection of nodes for special attention
 6. Modify LSTM - traditional LSTM might not be totally appropriate
 7. Include sympy operations (e.g. factor)
+8. replace embedding with one-hot
+9. Separate data from structure
 
 
 # Questions
