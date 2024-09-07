@@ -2,3 +2,9 @@
 .venv/
 *.DS_Store
 .idea/
+.vscode/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
