@@ -129,3 +129,7 @@ class Symple:
         self.validity_mask[OP_REDUCE_UNIT] = self.state.can_reduce_unit()
         self.validity_mask[OP_CANCEL] = self.state.can_cancel()
         self.validity_mask[OP_FINISH] = True
+
+    @staticmethod
+    def from_sympy(expr: "sympy.Expr") -> "Symple":
+        return Symple(ExprNode.from_sympy(expr))
