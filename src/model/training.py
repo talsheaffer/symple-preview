@@ -2,6 +2,7 @@
 import torch
 from src.model.model import SympleAgent
 from src.model.environment import Symple
+from typing import List
 
 def compute_loss(rewards, action_log_probs, gamma=1.):
     """
@@ -56,3 +57,30 @@ def accumulate_gradients(agent: SympleAgent, env: Symple):
 
 
 
+def train_on_batch(agent: SympleAgent, envs: List[Symple], optimizer: torch.optim.Optimizer):
+    """
+    Train the agent on a batch of Symple environment instances.
+
+    Args:
+    agent (SympleAgent): The agent to train.
+    envs (List[Symple]): A list of Symple environment instances to train on.
+    optimizer (torch.optim.Optimizer): The optimizer to use for training.
+
+    Returns:
+    float: The average loss for this batch.
+    """
+    agent.train()
+    optimizer.zero_grad()
+
+    total_loss = 0.0
+    for env in envs:
+        loss = accumulate_gradients(agent, env)
+        total_loss += loss
+
+    # Compute average loss
+    avg_loss = total_loss / len(envs)
+
+    # Perform optimization step
+    optimizer.step()
+
+    return avg_loss
