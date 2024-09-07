@@ -84,7 +84,6 @@ class ExprNode(object):
 
     @property
     def children(self):
-        # return tuple(elem for elem in (self.a, self.b) if elem is not None)
         return [x for x in [self.a, self.b] if x is not None]
 
     def topological_sort(self) -> list:

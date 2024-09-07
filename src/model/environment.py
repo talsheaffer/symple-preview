@@ -5,7 +5,7 @@ import torch
 from src.model.tree import ExprNode
 from src.utils import iota
 
-
+import sympy as sp
 
 
 def apply_op_and_count(op_func):
@@ -131,5 +131,5 @@ class Symple:
         self.validity_mask[OP_FINISH] = True
 
     @staticmethod
-    def from_sympy(expr: "sympy.Expr") -> "Symple":
+    def from_sympy(expr: sp.Expr) -> "Symple":
         return Symple(ExprNode.from_sympy(expr))
