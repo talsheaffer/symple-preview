@@ -2,16 +2,9 @@ import sympy as sp
 import torch
 
 from src.model.model_default import DEFAULT_DEVICE, DEFAULT_DTYPE
+from src.utils import iota
 
-
-def integers():
-    i = 0
-    while True:
-        yield i
-        i += 1
-
-
-it = integers()
+it = iota()
 
 ADD_TYPE = next(it)
 SUB_TYPE = next(it)
@@ -86,15 +79,13 @@ class ExprNode(object):
         if self.b is not None:
             self.b.p = self
 
+    def node_count(self) -> int:
+        return 1 + sum(child.node_count() for child in self.children)
+
     @property
     def children(self):
         # return tuple(elem for elem in (self.a, self.b) if elem is not None)
-        return (self.a, self.b)
-
-    @children.setter
-    def children(self, ch):
-        self.a = ch[0]
-        self.b = ch[1]
+        return [x for x in [self.a, self.b] if x is not None]
 
     def topological_sort(self) -> list:
         if self.a is None and self.b is None:

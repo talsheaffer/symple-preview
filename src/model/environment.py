@@ -1,16 +1,69 @@
+from typing import Tuple
+
 import torch
 
-OPS = {
-    "finish": lambda en: (en, 0, True),  # Finish
-    "move up": lambda en: (en.p, 0, False),
-    "move left": lambda en: (en.a, 0, False),
-    "move right": lambda en: (en.b, 0, False),  # Navigate
-    "pass": lambda en: (en, 0, False),
-}  # Pass
+from src.model.tree import ExprNode
+from src.utils import iota
 
-OP_INDICES = {key: i for i, key in enumerate(OPS.keys())}
-OPS = list(OPS.values())
-NUM_OPS = len(OPS)
+it = iota()
+OPS_MAP = list()
+
+OP_FINISH = next(it)
+def op_finish(expr: ExprNode) -> ExprNode:
+    return expr
+OPS_MAP.append(op_finish)
+
+OP_MOVE_UP = next(it)
+def op_move_up(expr: ExprNode) -> ExprNode:
+    return expr.p
+OPS_MAP.append(op_move_up)
+
+OP_MOVE_LEFT = next(it)    
+def op_move_left(expr: ExprNode) -> ExprNode:
+    return expr.a
+OPS_MAP.append(op_move_left)
+
+OP_MOVE_RIGHT = next(it)
+def op_move_right(expr: ExprNode) -> ExprNode:
+    return expr.b
+OPS_MAP.append(op_move_right)
+
+OP_PASS = next(it)
+def op_pass(expr: ExprNode) -> ExprNode:
+    return expr
+OPS_MAP.append(op_pass)
+
+OP_COMMUTE = next(it)
+def op_commute(expr: ExprNode) -> ExprNode:
+    return expr.commute()
+OPS_MAP.append(op_commute)
+
+OP_ASSOCIATE_B = next(it)
+def op_associate_b(expr: ExprNode) -> ExprNode:
+    return expr.associate_b()
+OPS_MAP.append(op_associate_b)
+
+OP_DISTRIBUTE_B = next(it)
+def op_distribute_b(expr: ExprNode) -> ExprNode:
+    return expr.distribute_b()
+OPS_MAP.append(op_distribute_b)
+
+OP_UNDISTRIBUTE_B = next(it)
+def op_undistribute_b(expr: ExprNode) -> ExprNode:
+    return expr.undistribute_b()
+OPS_MAP.append(op_undistribute_b)
+
+OP_REDUCE_UNIT = next(it)
+def op_reduce_unit(expr: ExprNode) -> ExprNode:
+    return expr.reduce_unit()
+OPS_MAP.append(op_reduce_unit)
+
+OP_CANCEL = next(it)
+def op_cancel(expr: ExprNode) -> ExprNode:
+    return expr.cancel()
+OPS_MAP.append(op_cancel)
+
+NUM_OPS = next(it)
 
 
 # Consider using Open-Ai Gym?
@@ -23,31 +76,36 @@ class Symple:
 
     def __init__(
         self,
-        en: "ExprNode",
+        expr: "ExprNode",
         time_penalty: float = -0.02,
         node_count_importance_factor: float = 1.0,
-        invalid_action_penalty: float = -10.0,
     ):
-        self.expr = en
-        self.state = en
+        self.expr = expr
+        self.state = expr
         self.validity_mask = torch.ones(NUM_OPS, dtype=int)
         self.update_validity_mask()
         self.time_penalty = time_penalty
         self.node_count_importance_factor = node_count_importance_factor
-        self.invalid_action_penalty = invalid_action_penalty
 
-    def step(self, action: int) -> (float, bool):
+    def step(self, action: int) -> Tuple[float, bool]:
         reward = self.time_penalty
-        if not self.validity_mask[action]:
-            reward += self.invalid_action_penalty
-            return reward, False
-        self.state, node_count_reduction, done = OPS[action](self.state)
+        
+        node_count_reduction = self.state.node_count()
+        self.state = OPS_MAP[action](self.state)
+        node_count_reduction -= self.state.node_count()
+        
         self.update_validity_mask()
         reward += self.node_count_importance_factor * node_count_reduction
-        return reward, done
+        return reward, action == OP_FINISH
 
-    def update_validity_mask(self):
-        # Implement
-        self.validity_mask[OP_INDICES["move up"]] = bool(self.state.p)
-        self.validity_mask[OP_INDICES["move left"]] = bool(self.state.a)
-        self.validity_mask[OP_INDICES["move right"]] = bool(self.state.b)
+    def update_validity_mask(self) -> None:
+        self.validity_mask[OP_MOVE_UP] = bool(self.state.p)
+        self.validity_mask[OP_MOVE_LEFT] = bool(self.state.a)
+        self.validity_mask[OP_MOVE_RIGHT] = bool(self.state.b)
+        self.validity_mask[OP_COMMUTE] = self.state.can_commute()
+        self.validity_mask[OP_ASSOCIATE_B] = self.state.can_associate_b()
+        self.validity_mask[OP_DISTRIBUTE_B] = self.state.can_distribute_b()
+        self.validity_mask[OP_UNDISTRIBUTE_B] = self.state.can_undistribute_b()
+        self.validity_mask[OP_REDUCE_UNIT] = self.state.can_reduce_unit()
+        self.validity_mask[OP_CANCEL] = self.state.can_cancel()
+        self.validity_mask[OP_FINISH] = True
