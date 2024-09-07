@@ -2,7 +2,6 @@ import torch
 import torch.nn.functional as F
 from environment import NUM_OPS, Symple
 from ffn import FFN
-from model_default import DEFAULT_DEVICE, DEFAULT_DTYPE
 from numpy import inf
 from torch import nn
 from tree import INT_NE_TYPE, INT_PO_TYPE, VOCAB_SIZE, ExprNode
@@ -40,7 +39,7 @@ class BinaryTreeLSTM(nn.Module):
         self.lstm = nn.LSTM(input_size, 2 * hidden_size, *lstmargs, **lstmkwargs)
 
     def forward(self, input: "ExprNode", depth=inf) -> "ExprNode":
-        if input.a == None or input.b == None or depth < 0:
+        if input.a is None or input.b is None or depth < 0:
             if depth < 0:
                 return input
             input.hidden = torch.zeros((1, self.hidden_size))
