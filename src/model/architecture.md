@@ -93,6 +93,9 @@ The actions come in a few types:
 7. Include sympy operations (e.g. factor)
 8. replace embedding with one-hot
 9. Separate data from structure
+10. Optimizations:
+    * [TorchScript](https://medium.com/@hihuaweizhu/key-points-to-grasp-for-torchscript-beginners-c02cf94aaa50)
+    * Torch compile
 
 
 # Questions

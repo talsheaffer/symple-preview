@@ -1,12 +1,12 @@
 import torch
 import torch.nn.functional as F
-from environment import NUM_OPS, Symple
-from ffn import FFN
-from numpy import inf
 from torch import nn
-from tree import INT_NE_TYPE, INT_PO_TYPE, VOCAB_SIZE, ExprNode
 
+from src.model.environment import NUM_OPS, Symple
+from src.model.ffn import FFN
+from src.model.tree import INT_NE_TYPE, INT_PO_TYPE, VOCAB_SIZE, ExprNode
 
+from numpy import inf
 class SympleEmbedding(nn.Module):
     def __init__(
         self,

@@ -9,5 +9,5 @@ __pycache__/
 *.pyd
 .ipynb_checkpoints/
 scratch.ipynb
-
+.vscode
 
