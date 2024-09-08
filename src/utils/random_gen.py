@@ -1,6 +1,15 @@
 import numpy as np
 from random import choice, randint
-from sympy import FunctionClass, Add, Mul, cos, sin, binomial, arity, S
+from sympy import (
+    FunctionClass,
+    Add,
+    Mul,
+    # cos,
+    # sin,
+    # binomial,
+    arity,
+    S,
+)
 from src.utils.tree_iter import get_coords, get_subexpression
 
 
