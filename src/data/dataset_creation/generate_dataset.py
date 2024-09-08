@@ -5,6 +5,7 @@ from random import randint
 from src.data.utils.complicate import complicate
 from src.utils.tree_iter import node_count
 
+import sympy as sp
 from sympy import symbols, simplify
 
 import pandas as pd
@@ -31,6 +32,8 @@ for config in configs:
                 lambda rga: (rga[0], (randint(1, 5), -randint(1, 5)) + rga[1])
             )(config["rand gen args"]),
         )
+        if sp.core.numbers.ComplexInfinity() in ecomp.atoms():
+            continue
         secomp = simplify(ecomp)
         datapoints.append(
             {
@@ -51,6 +54,3 @@ ds["difficulty"] = ds["node count expr"] - ds["node count simp"]
 file_path = ROOT_DIR + "/data/dataset.json"
 with open(file_path, "w") as f:
     ds.to_json(f)
-
-# with open('data.json','r') as f:
-#     ds = pd.read_json(f)
