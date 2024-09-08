@@ -1,5 +1,3 @@
-import os
-
 from itertools import product
 
 from random import randint
@@ -9,9 +7,11 @@ from src.utils.tree_iter import node_count
 
 from sympy import symbols, simplify
 
-x, y, z = symbols("x, y, z")
-
 import pandas as pd
+
+from definitions import ROOT_DIR
+
+x, y, z = symbols("x, y, z")
 
 configs = [
     {
@@ -47,7 +47,6 @@ ds = pd.DataFrame.from_dict(datapoints)
 ds[ds.columns[:3]] = ds[ds.columns[:3]].map(str)
 ds["difficulty"] = ds["node count expr"] - ds["node count simp"]
 
-from definitions import ROOT_DIR
 
 file_path = ROOT_DIR + "/data/dataset.json"
 with open(file_path, "w") as f:
