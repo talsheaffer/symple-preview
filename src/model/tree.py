@@ -102,13 +102,11 @@ class ExprNode(object):
             type_, arg = MUL_TYPE, ARG_NULL
         elif isinstance(expr, sp.Pow):
             type_, arg = POW_TYPE, ARG_NULL
-        elif isinstance(expr, sp.Number):
+        elif isinstance(expr, sp.Rational):
             if isinstance(expr, sp.Integer):
                 type_, arg = INT_NE_TYPE if expr < 0 else INT_PO_TYPE, abs(int(expr))
-            elif isinstance(expr, sp.Rational):
-                type_, arg = DIV_TYPE, ARG_NULL
             else:
-                raise NotImplementedError(f"Unsupported number type {type(expr)}")
+                type_, arg = DIV_TYPE, ARG_NULL
         elif isinstance(expr, sp.Symbol) and expr.name in SYMPY_SYMBOL_MAP:
             type_, arg = SYMPY_SYMBOL_MAP[expr.name], ARG_NULL
         else:
@@ -125,8 +123,9 @@ class ExprNode(object):
             en.a = cls.from_sympy(expr.args[0], p=en)
             en.b = cls.from_sympy(expr.args[1], p=en)
         elif isinstance(expr, sp.Rational):
-            en.a = cls.from_sympy(sp.sympify(expr.p), p=en)
-            en.b = cls.from_sympy(sp.sympify(expr.q), p=en)
+            if not isinstance(expr, sp.Integer):
+                en.a = cls.from_sympy(sp.sympify(expr.p), p=en)
+                en.b = cls.from_sympy(sp.sympify(expr.q), p=en)
 
         return en
 
