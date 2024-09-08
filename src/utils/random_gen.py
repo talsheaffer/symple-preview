@@ -41,16 +41,16 @@ def random_expr_if_none(expr, *args, **kwargs):
     return expr if expr is not None else random_expr(*args, **kwargs)
 
 
-def expr_grabber(l, *args, **kwargs):
+def expr_grabber(list_of_exprs, *args, **kwargs):
     """
-    l should have the form [None, (actual expressions)]
+    list_of_exprs should have the form [None, (actual expressions)]
     """
     prob = 0.1
 
     def random_from_list():
-        p = np.ones(len(l)) * (1 - prob) / len(l)
+        p = np.ones(len(list_of_exprs)) * (1 - prob) / len(list_of_exprs)
         p[0] += prob
-        expr = np.random.choice(l, p=p)
+        expr = np.random.choice(list_of_exprs, p=p)
         return expr if expr is not None else random_expr(*args, **kwargs)
 
     return random_from_list

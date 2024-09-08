@@ -125,8 +125,8 @@ class ExprNode(object):
             en.a = cls.from_sympy(expr.args[0], p=en)
             en.b = cls.from_sympy(expr.args[1], p=en)
         elif isinstance(expr, sp.Rational):
-            en.a = cls.from_sympy(expr.p, p=en)
-            en.b = cls.from_sympy(expr.q, p=en)
+            en.a = cls.from_sympy(sp.sympify(expr.p), p=en)
+            en.b = cls.from_sympy(sp.sympify(expr.q), p=en)
 
         return en
 
