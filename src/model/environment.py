@@ -131,5 +131,5 @@ class Symple:
         self.validity_mask[OP_FINISH] = True
 
     @staticmethod
-    def from_sympy(expr: sp.Expr) -> "Symple":
-        return Symple(ExprNode.from_sympy(expr))
+    def from_sympy(expr: sp.Expr, **kwargs) -> "Symple":
+        return Symple(ExprNode.from_sympy(expr), **kwargs)
