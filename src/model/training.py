@@ -24,9 +24,7 @@ def compute_loss(rewards, action_log_probs, gamma=1.):
     for t in reversed(range(T)):
         future_return = rewards[t] + gamma * future_return
         returns[t] = future_return
-    
-    # Normalize returns
-    returns = (returns - returns.mean()) / (returns.std() + 1e-8)
+
     
     # Compute loss
     action_log_probs = torch.stack(action_log_probs)
@@ -47,7 +45,7 @@ def accumulate_gradients(agent: SympleAgent, env: Symple):
     """
     agent.train()
     
-    rewards, action_log_probs = agent(env)
+    rewards, action_log_probs, _ = agent(env)
     loss = compute_loss(rewards, action_log_probs)
     
     loss.backward()
