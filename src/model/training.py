@@ -107,7 +107,7 @@ def train_on_batch(
     agent.train()
     optimizer.zero_grad()
 
-    avg_loss = torch.zeros(1, device=envs[0].device)
+    avg_loss = 0.0
     for env in envs:
         if behavior_policy:
             rewards, action_probs, behavior_action_probs, _ = agent(env, behavior_policy = behavior_policy)
@@ -115,9 +115,9 @@ def train_on_batch(
         else:
             rewards, action_log_probs, _ = agent(env)
             loss = compute_loss(rewards, action_log_probs) / len(envs)
+        loss.backward()
+        loss = loss.item()
         avg_loss += loss
-    
-    avg_loss.backward()
 
     # Perform optimization step
     optimizer.step()
