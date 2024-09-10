@@ -48,19 +48,19 @@ def compute_loss_off_policy(rewards: List[float], target_policy_probs: List[torc
     T = len(rewards)
     returns = torch.zeros(T, device=target_policy_probs[0].device)
     
-    # Compute discounted returns
-    future_return = 0
-    for t in reversed(range(T)):
-        future_return = rewards[t] + gamma * future_return
-        returns[t] = future_return
 
     # Compute importance sampling ratios
+
     target_policy_probs = torch.stack(target_policy_probs)
     behavior_policy_probs = torch.stack(behavior_policy_probs)
     importance_ratios = target_policy_probs / behavior_policy_probs.detach() # Detach to prevent gradient flow
+    # Compute discounted returns using importance sampling
+    future_return = torch.zeros(1, device=target_policy_probs[0].device)
+    for t in reversed(range(T)):
+        future_return = importance_ratios[t] * (rewards[t] + gamma * future_return)
+        returns[t] = future_return
 
-    # Compute loss using importance sampling
-    loss = -(returns * importance_ratios ).sum()
+    loss = -returns.sum()
     
     return loss
 
