@@ -81,5 +81,6 @@ plt.plot(range(1, len(losses) + 1), losses)
 plt.title('Loss vs Batch Number')
 plt.xlabel('Batch Number')
 plt.ylabel('Loss')
+plt.savefig('loss_history.png')
 plt.show()
 
