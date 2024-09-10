@@ -25,7 +25,9 @@ with open(ROOT_DIR + "/data/dataset.json", "r") as f:
     df = pd.read_json(f)
 df[df.columns[:3]] = df[df.columns[:3]].map(sp.sympify)
 
-df['symple_envs'] = df['expr'].apply(Symple.from_sympy, time_penalty=0.)
+df['symple_envs'] = df['expr'].apply(Symple.from_sympy,
+                                     time_penalty=0., # Additional keyward args to be passed to Symple.from_sympy
+                                     )
 
 
 
@@ -41,8 +43,8 @@ agent = SympleAgent(
 optimizer = torch.optim.Adam(agent.parameters(), lr=0.001)
 
 # Training loop
-num_epochs = 10
-batch_size = 10
+num_epochs = 5
+batch_size = 32
 
 
 total_time = 0
