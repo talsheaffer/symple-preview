@@ -57,34 +57,12 @@ def compute_loss_off_policy(rewards: List[float], target_policy_probs: List[torc
     # Compute importance sampling ratios
     target_policy_probs = torch.stack(target_policy_probs)
     behavior_policy_probs = torch.stack(behavior_policy_probs)
-    importance_ratios = target_policy_probs / behavior_policy_probs
+    importance_ratios = target_policy_probs / behavior_policy_probs.detach() # Detach to prevent gradient flow
 
     # Compute loss using importance sampling
     loss = -(returns * importance_ratios ).sum()
     
     return loss
-
-
-def accumulate_gradients(agent: SympleAgent, env: Symple) -> float:
-    """
-    Perform a forward pass and accumulate gradients without taking an optimizer step.
-    
-    Args:
-    agent (SympleAgent): The agent to train.
-    env (Symple): The environment to train on.
-    
-    Returns:
-    float: The loss for this training step.
-    """
-    agent.train()
-    
-    rewards, action_log_probs, _ = agent(env)
-    loss = compute_loss(rewards, action_log_probs)
-    
-    loss.backward()
-    
-    return loss.item()
-
 
 
 
