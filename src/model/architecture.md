@@ -112,19 +112,26 @@ The actions come in a few types:
 The total return is (the ensemble average over states $s$ of -) (ignoring the time-penalty):
 $$ 
 \begin{align*}
-& \sum_a p(w, s, a) Q(s, a) \\
-= &  \sum_a p(w, s, a) \left( \underbrace{C(s)-C(a(s))}_{\text{reward}\, = \, \text{change in node count}} + 
-\gamma \sum_{a'} p(w, a(s), a') Q(a(s), a') \right) \\
-= &  \sum_{a_0, a_1, \ldots, a_n} p(w, s, a_0) !!!
+& \sum_a \pi(w, s, a) Q_\pi(s, a) \\
+= &  \sum_a \pi(w, s, a) \left( \underbrace{C(s)-C(a(s))}_{\text{reward}\, = \, \text{change in node count}} + 
+\gamma \sum_{a'} \pi(w, a(s), a') Q_\pi(a(s), a') \right) 
 \end{align*}
 $$
 where $w$ are the weights of the neural net. If we take the derivative with respect to $w$, we get:
 $$
 \begin{align*}
-\nabla_w \sum_a p(w, s, a) Q(s, a)  = & 
- \sum_a \nabla_w p(w, s, a) \left( C(s)-C(a(s)) + \gamma \sum_{a'} p(w, a(s), a') Q(a(s), a') \right) \\
-+ &  \sum_a  p(w, s, a) \left(\gamma \nabla_w \sum_{a'} p(w, a(s), a') Q(a(s), a') \right) \\
-= & \sum_a p(w, s, a)\nabla_w \log \left( p(w, s, a) \right)  Q(s, a) \\
-+ &  \sum_a  p(w, s, a) \left(\gamma \nabla_w \sum_{a'} p(w, a(s), a') Q(a(s), a') \right) \\
+\nabla_w \sum_a \pi(w, s, a) Q_\pi(s, a)  = & 
+ \sum_a \nabla_w \pi(w, s, a) \left( C(s)-C(a(s)) + \gamma \sum_{a'} \pi(w, a(s), a') Q_\pi(a(s), a') \right) \\
++ &  \sum_a  \pi(w, s, a) \left(\gamma \nabla_w \sum_{a'} \pi(w, a(s), a') Q_\pi(a(s), a') \right) \\
+= & \sum_a \pi(w, s, a)\nabla_w \log \left( \pi(w, s, a) \right)  Q_\pi(s, a) \\
++ &  \sum_a  \pi(w, s, a) \left(\gamma \nabla_w \sum_{a'} \pi(w, a(s), a') Q_\pi(a(s), a') \right) \\
+\end{align*}
+$$
+
+For off-policy learning, there's a behavior policy $\rho$  and we use importance sampling:
+$$
+\begin{align*}
+\ldots = & \sum_a \rho(s, a) \frac{1}{\rho(s, a)} \nabla_w  \pi(w, s, a)  Q_\pi(s, a) \\
++ &  \sum_a  \rho(s, a) \frac{\pi(w, s, a)}{\rho(s, a)}  \left(\gamma \nabla_w \sum_{a'} \pi(w, a(s), a') Q_\pi(a(s), a') \right) \\
 \end{align*}
 $$
