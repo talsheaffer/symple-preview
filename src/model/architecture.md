@@ -20,14 +20,16 @@ The model (note: perhaps "model" is a bad name here. The "world" is directly vis
 * Embedding vectors for each node in the expression graph.
 * The vectors get "contextualized" by their neighbors. This can be done either by:
     * LSTM: either [graphical](https://aclanthology.org/P15-1150/) or sequential. In one LSTM step each node-vector gets contextuallized by immediate neighbors. When repeated, information propagates all over the graph. Can be applied to entire expression or to sub-expression, or even to a single node.
-      * $$ \begin{array}{ll} \\
-              i_t = \sigma(W_{ii} x_t + b_{ii} + W_{hi} h_{t-1} + b_{hi}) \\
-              f_t = \sigma(W_{if} x_t + b_{if} + W_{hf} h_{t-1} + b_{hf}) \\
-              g_t = \tanh(W_{ig} x_t + b_{ig} + W_{hg} h_{t-1} + b_{hg}) \\
-              o_t = \sigma(W_{io} x_t + b_{io} + W_{ho} h_{t-1} + b_{ho}) \\
-              c_t = f_t \odot c_{t-1} + i_t \odot g_t \\
-              h_t = o_t \odot \tanh(c_t) \\
-          \end{array} $$
+      * $$ 
+        \begin{align*} 
+            i_t  = & \sigma(W_{ii} x_t + b_{ii} + W_{hi} h_{t-1} + b_{hi}) \\
+            f_t  = & \sigma(W_{if} x_t + b_{if} + W_{hf} h_{t-1} + b_{hf}) \\
+            g_t  = & \tanh(W_{ig} x_t + b_{ig} + W_{hg} h_{t-1} + b_{hg}) \\
+            o_t  = & \sigma(W_{io} x_t + b_{io} + W_{ho} h_{t-1} + b_{ho}) \\
+            c_t  = & f_t \odot c_{t-1} + i_t \odot g_t \\
+            h_t  = & o_t \odot \tanh(c_t) \\
+        \end{align*} 
+        $$
     * Self-attention: As in transformer. Possibly better for long-distance relationships among distant parts of the expression. Probably more compute intensive.
 * In addition to node-vectors, additional metadata:
     * The simplifier's "position" (a subexpression).
@@ -103,3 +105,26 @@ The actions come in a few types:
 1. What are precisely the benefits of Actor-Critic?
 2. Monte-Carlo vs TD - Monte Carlo more stable (according to NeuRewriter guys)?
 3. What is GRU about anyway?
+
+
+# Policy gradient
+
+The total return is (the ensemble average over states $s$ of -) (ignoring the time-penalty):
+$$ 
+\begin{align*}
+& \sum_a p(w, s, a) Q(s, a) \\
+= &  \sum_a p(w, s, a) \left( \underbrace{C(s)-C(a(s))}_{\text{reward}\, = \, \text{change in node count}} + 
+\gamma \sum_{a'} p(w, a(s), a') Q(a(s), a') \right) \\
+= &  \sum_{a_0, a_1, \ldots, a_n} p(w, s, a_0) !!!
+\end{align*}
+$$
+where $w$ are the weights of the neural net. If we take the derivative with respect to $w$, we get:
+$$
+\begin{align*}
+\nabla_w \sum_a p(w, s, a) Q(s, a)  = & 
+ \sum_a \nabla_w p(w, s, a) \left( C(s)-C(a(s)) + \gamma \sum_{a'} p(w, a(s), a') Q(a(s), a') \right) \\
++ &  \sum_a  p(w, s, a) \left(\gamma \nabla_w \sum_{a'} p(w, a(s), a') Q(a(s), a') \right) \\
+= & \sum_a p(w, s, a)\nabla_w \log \left( p(w, s, a) \right)  Q(s, a) \\
++ &  \sum_a  p(w, s, a) \left(\gamma \nabla_w \sum_{a'} p(w, a(s), a') Q(a(s), a') \right) \\
+\end{align*}
+$$
