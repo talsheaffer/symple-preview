@@ -13,6 +13,8 @@ from src.model.environment import Symple
 from src.model.model import SympleAgent
 from src.model.training import train_on_batch
 
+from aux_policies import random_policy
+
 # Load the dataset
 from definitions import ROOT_DIR
 sys.setrecursionlimit(10000)  # Increase as needed
@@ -43,14 +45,19 @@ agent = SympleAgent(
 optimizer = torch.optim.Adam(agent.parameters(), lr=0.001)
 
 # Training loop
-num_epochs = 5
-batch_size = 32
+num_epochs = 10
+batch_size = 64
 
 
 total_time = 0
 
 losses = []
 total_time = 0
+
+
+
+
+
 
 for epoch in range(num_epochs):
     # Shuffle the dataset
@@ -61,7 +68,9 @@ for epoch in range(num_epochs):
         
         # Measure time for training on the batch
         start_time = time.time()
-        avg_loss = train_on_batch(agent, batch, optimizer)
+        avg_loss = train_on_batch(agent, batch, optimizer,
+                                  behavior_policy=random_policy
+                                  )
         end_time = time.time()
         
         batch_time = end_time - start_time
@@ -81,5 +90,6 @@ plt.plot(range(1, len(losses) + 1), losses)
 plt.title('Loss vs Batch Number')
 plt.xlabel('Batch Number')
 plt.ylabel('Loss')
+plt.axhline(y=0, color='k', linestyle='-', linewidth=0.5)  # Add horizontal line at y=0
 plt.savefig(ROOT_DIR + '/train/loss_history.png')
 
