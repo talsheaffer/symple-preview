@@ -6,6 +6,8 @@ from src.model.environment import NUM_OPS, Symple
 from src.model.ffn import FFN
 from src.model.tree import INT_NE_TYPE, INT_PO_TYPE, VOCAB_SIZE, ExprNode
 
+from typing import Callable, Union, List, Tuple
+
 from numpy import inf
 class SympleEmbedding(nn.Module):
     def __init__(
@@ -86,26 +88,74 @@ class SympleAgent(nn.Module):
 
         self.temperature = 3
 
-    def forward(self, env: Symple):
+    def policy(self, env: Symple):
+        env = self.embedding(env)
+        env = self.lstm(env)
+        logits = self.actor(env.hidden)
+        logits += torch.log(env.validity_mask)
+        action_probs = F.softmax(logits / self.temperature, dim=-1)
+        return action_probs
+    
+    def step(self, env: Symple):
+        action_probs = self.policy(env)
+        action = torch.multinomial(action_probs, 1).item()
+        reward, done = env.step(action)
+        return reward, done, action_probs[action]
+
+    def forward(self, env: Symple,
+                behavior_policy: Union[
+                    Callable[
+                        [Symple], Union[torch.Tensor, List[float]]
+                    ], None
+                ] = None
+                ) -> Union[
+                    Tuple[List[float], List[torch.scalar_tensor], Symple],
+                    Tuple[List[float], List[torch.scalar_tensor], List[torch.scalar_tensor], Symple],
+                    Symple
+                ]:
+        if behavior_policy:
+            return self.off_policy_forward(env, behavior_policy)
+        
         done = False
         if self.training:
             rewards = []
             action_log_probs = []
 
         while not done:
-            env.state = self.embedding(env.state)
-            env.state = self.lstm(env.state)
-            logits = self.actor(env.state.hidden)
-            logits += torch.log(env.validity_mask)
-
-            probs = F.softmax(logits / self.temperature, dim=-1)
-            action = torch.multinomial(probs, 1).item()
-            reward, done = env.step(action)
+            reward, done, action_prob = self.step(env)
             if self.training:
                 rewards.append(reward)
-                action_log_probs.append(torch.log(probs[0, action]))
+                action_log_probs.append(torch.log(action_prob))
         if self.training:
             return rewards, action_log_probs, env
         else:
             return env
+    
+    def off_policy_step(self, env: Symple,
+                        behavior_policy: Callable[[Symple], Union[torch.Tensor, List[float]]]
+                        ) -> Tuple[float, bool, float, float]:
+        action_probs = self.policy(env)
+        behavior_probs = behavior_policy(env)
+        action = torch.multinomial(torch.tensor(behavior_probs), 1).item()
+        reward, done = env.step(action)
+        return reward, done, action_probs[action], behavior_probs[action]
+    
+    def off_policy_forward(self, env: Symple,
+                           behavior_policy: Callable[[Symple], Union[torch.Tensor, List[float]]]
+                           ) -> Union[Tuple[List[float], List[torch.scalar_tensor], List[torch.scalar_tensor], Symple], Symple]:
+        done = False
+        if self.training:
+            rewards = []
+            action_probs = []
+            behavior_action_probs = []
 
+        while not done:
+            reward, done, action_prob, behavior_action_prob = self.off_policy_step(env, behavior_policy)
+            if self.training:
+                rewards.append(reward)
+                action_probs.append(action_prob)
+                behavior_action_probs.append(behavior_action_prob)
+        if self.training:
+            return rewards, action_probs, behavior_action_probs, env
+        else:
+            return env
