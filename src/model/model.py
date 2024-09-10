@@ -100,7 +100,7 @@ class SympleAgent(nn.Module):
         action_probs = self.policy(env)
         action = torch.multinomial(action_probs, 1).item()
         reward, done = env.step(action)
-        return reward, done, action_probs[action]
+        return reward, done, action_probs[:,action]
 
     def forward(self, env: Symple,
                 behavior_policy: Optional[
@@ -138,7 +138,7 @@ class SympleAgent(nn.Module):
         behavior_probs = behavior_policy(env)
         action = torch.multinomial(torch.tensor(behavior_probs), 1).item()
         reward, done = env.step(action)
-        return reward, done, action_probs[action], behavior_probs[action]
+        return reward, done, action_probs[:,action], behavior_probs[:,action]
     
     def off_policy_forward(self, env: Symple,
                            behavior_policy: Callable[[Symple], Union[torch.Tensor, List[float]]]
