@@ -72,13 +72,15 @@ def train_on_batch(agent: SympleAgent, envs: List[Symple], optimizer: torch.opti
 
     total_loss = 0.0
     for env in envs:
-        loss = accumulate_gradients(agent, env)
+        rewards, action_log_probs, _ = agent(env)
+        loss = compute_loss(rewards, action_log_probs)
         total_loss += loss
 
     # Compute average loss
     avg_loss = total_loss / len(envs)
+    avg_loss.backward()
 
     # Perform optimization step
     optimizer.step()
 
-    return avg_loss
+    return avg_loss.item()
