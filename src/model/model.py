@@ -6,7 +6,7 @@ from src.model.environment import NUM_OPS, Symple
 from src.model.ffn import FFN
 from src.model.tree import INT_NE_TYPE, INT_PO_TYPE, VOCAB_SIZE, ExprNode
 
-from typing import Callable, Union, List, Tuple
+from typing import Callable, Union, List, Tuple, Optional
 
 from numpy import inf
 class SympleEmbedding(nn.Module):
@@ -89,9 +89,9 @@ class SympleAgent(nn.Module):
         self.temperature = 3
 
     def policy(self, env: Symple):
-        env = self.embedding(env)
-        env = self.lstm(env)
-        logits = self.actor(env.hidden)
+        env.state = self.embedding(env.state)
+        env.state = self.lstm(env.state)
+        logits = self.actor(env.state.hidden)
         logits += torch.log(env.validity_mask)
         action_probs = F.softmax(logits / self.temperature, dim=-1)
         return action_probs
@@ -103,10 +103,10 @@ class SympleAgent(nn.Module):
         return reward, done, action_probs[action]
 
     def forward(self, env: Symple,
-                behavior_policy: Union[
+                behavior_policy: Optional[
                     Callable[
                         [Symple], Union[torch.Tensor, List[float]]
-                    ], None
+                    ]
                 ] = None
                 ) -> Union[
                     Tuple[List[float], List[torch.scalar_tensor], Symple],
