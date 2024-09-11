@@ -84,6 +84,10 @@ The actions come in a few types:
 
 6. What are the atomic operations and how to combine them? 
 
+# Problems
+
+1. Resetting environment
+
 # Possible imporvements
 
 1. global state information

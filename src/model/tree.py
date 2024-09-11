@@ -129,6 +129,11 @@ class ExprNode(object):
 
         return en
 
+    def reset(self)->None:
+        self.embedding = None
+        self.hidden = None
+        self.cell = None
+
     def to_tensor(self, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE) -> torch.Tensor:
         tensor = torch.zeros((2,), device=device, dtype=dtype)
         tensor[0] = self.type
@@ -278,7 +283,7 @@ class ExprNode(object):
                 return one
             elif b == one:
                 return self.a
-            elif a == zero:
+            elif a == zero and b.type == INT_PO_TYPE and b.arg >0:
                 return zero
             elif a == one:
                 return one
