@@ -98,6 +98,7 @@ The actions come in a few types:
 10. Optimizations:
     * [TorchScript](https://medium.com/@hihuaweizhu/key-points-to-grasp-for-torchscript-beginners-c02cf94aaa50)
     * Torch compile
+11. Policy gradient - add baseline
 
 
 # Questions
