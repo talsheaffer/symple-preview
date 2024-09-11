@@ -2,9 +2,9 @@
 import torch
 from src.model.model import SympleAgent
 from src.model.environment import Symple
-from typing import List, Callable, Union, Optional
+from typing import List, Callable, Union, Optional, Tuple
 
-def compute_loss(rewards: List[float], action_log_probs: List[torch.Tensor], gamma: float = 1.) -> torch.Tensor:
+def compute_loss(rewards: List[float], action_log_probs: List[torch.Tensor], gamma: float = 1.) -> Tuple[torch.Tensor, float]:
     """
     Compute the loss for Monte Carlo training.
     
@@ -30,9 +30,11 @@ def compute_loss(rewards: List[float], action_log_probs: List[torch.Tensor], gam
     action_log_probs = torch.stack(action_log_probs)
     loss = -(returns * action_log_probs).sum()
     
-    return loss
+    return loss, returns[0].item()
 
-def compute_loss_off_policy(rewards: List[float], target_policy_probs: List[torch.Tensor], behavior_policy_probs: List[torch.Tensor], gamma: float = 1.) -> torch.Tensor:
+def compute_loss_off_policy(
+        rewards: List[float], target_policy_probs: List[torch.Tensor], behavior_policy_probs: List[torch.Tensor], gamma: float = 1.
+) -> torch.Tensor:
     """
     Compute the loss for off-policy Monte Carlo training.
     
@@ -45,22 +47,17 @@ def compute_loss_off_policy(rewards: List[float], target_policy_probs: List[torc
     Returns:
     torch.Tensor: The computed loss.
     """
-    T = len(rewards)
-    returns = torch.zeros(T, device=target_policy_probs[0].device)
-    
-
     # Compute importance sampling ratios
 
     target_policy_probs = torch.stack(target_policy_probs)
     behavior_policy_probs = torch.stack(behavior_policy_probs)
     importance_ratios = target_policy_probs / behavior_policy_probs.detach() # Detach to prevent gradient flow
     # Compute discounted returns using importance sampling
-    future_return = torch.zeros(1, device=target_policy_probs[0].device)
-    for t in reversed(range(T)):
-        future_return = importance_ratios[t] * (rewards[t] + gamma * future_return)
-        returns[t] = future_return
+    total_return = torch.zeros(1, device=target_policy_probs[0].device)
+    for t in reversed(range(len(rewards))):
+        total_return = importance_ratios[t] * (rewards[t] + gamma * total_return)
 
-    loss = -returns.sum()
+    loss = -total_return
     
     return loss
 
@@ -85,19 +82,20 @@ def train_on_batch(
     agent.train()
     optimizer.zero_grad()
 
-    avg_loss = 0.0
+    avg_return = 0.0
     for env in envs:
         if behavior_policy:
             rewards, action_probs, behavior_action_probs, _ = agent(env, behavior_policy = behavior_policy)
             loss = compute_loss_off_policy(rewards, action_probs, behavior_action_probs) / len(envs)
+            total_return = -loss.item()
         else:
             rewards, action_log_probs, _ = agent(env)
-            loss = compute_loss(rewards, action_log_probs) / len(envs)
+            loss, total_return = compute_loss(rewards, action_log_probs) 
+            loss, total_return = loss/len(envs), total_return/len(envs)
         loss.backward()
-        loss = loss.item()
-        avg_loss += loss
+        avg_return += total_return
 
     # Perform optimization step
     optimizer.step()
 
-    return avg_loss
+    return avg_return

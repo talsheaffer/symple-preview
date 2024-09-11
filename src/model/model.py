@@ -40,24 +40,32 @@ class BinaryTreeLSTM(nn.Module):
         self.hidden_size = hidden_size
         self.lstm = nn.LSTM(input_size, 2 * hidden_size, *lstmargs, **lstmkwargs)
 
-    def forward(self, input: "ExprNode", depth=inf) -> "ExprNode":
-        if input.a is None or input.b is None or depth < 0:
-            if depth < 0:
-                return input
-            input.hidden = torch.zeros((1, self.hidden_size))
-            input.cell = torch.zeros((1, self.hidden_size))
+    def forward(self, input: ExprNode, depth=inf) -> ExprNode:
+        if depth < 0:
             return input
         input.a, input.b = (
-            self(input.a, depth=depth - 1),
-            self(input.b, depth=depth - 1),
+            self(input.a, depth=depth - 1) if input.a is not None else None,
+            self(input.b, depth=depth - 1) if input.b is not None else None,
         )
         _, (input.hidden, input.cell) = self.lstm(
             input.embedding,
-            (
-                torch.cat((input.a.hidden, input.b.hidden), dim=1),
-                torch.cat((input.a.cell, input.b.cell), dim=1),
-            ),
-        )
+                (
+                    torch.cat(
+                        (
+                            input.a.hidden if input.a is not None else torch.zeros((1, self.hidden_size)),
+                            input.b.hidden if input.b is not None else torch.zeros((1, self.hidden_size)),
+                        ),
+                        dim=-1
+                    ),
+                    torch.cat(
+                        (
+                            input.a.cell if input.a is not None else torch.zeros((1, self.hidden_size)),
+                            input.b.cell if input.b is not None else torch.zeros((1, self.hidden_size)),
+                        ),
+                        dim=-1
+                    ),
+                ),
+            )
         input.hidden, input.cell = (
             v[:, : self.hidden_size] for v in (input.hidden, input.cell)
         )  # Truncated to hidden size. Figure out how to use the other half, or avoid computing it.
@@ -67,7 +75,7 @@ class BinaryTreeLSTM(nn.Module):
 
 class SympleAgent(nn.Module):
     """
-    Currently only actor, no critic. Need to implement: training
+    Currently only actor, no critic.
     """
 
     def __init__(
@@ -76,6 +84,8 @@ class SympleAgent(nn.Module):
         embedding_size: int,
         vocab_size: int = VOCAB_SIZE,
         num_ops=NUM_OPS,
+        ffn_n_layers: int = 1,
+        lstm_n_layers: int = 1,
     ):
         super(SympleAgent, self).__init__()
         self.hidden_size = hidden_size
@@ -83,8 +93,8 @@ class SympleAgent(nn.Module):
         self.vocab_size = vocab_size
         self.num_ops = num_ops
         self.embedding = SympleEmbedding(self.vocab_size, self.embedding_size)
-        self.lstm = BinaryTreeLSTM(self.embedding_size, self.hidden_size)
-        self.actor = FFN(self.hidden_size, self.hidden_size, self.num_ops)
+        self.lstm = BinaryTreeLSTM(self.embedding_size, self.hidden_size, num_layers=lstm_n_layers)
+        self.actor = FFN(self.hidden_size, self.hidden_size, self.num_ops, n_layers=ffn_n_layers)
 
         self.temperature = 3
 
@@ -109,8 +119,8 @@ class SympleAgent(nn.Module):
                     ]
                 ] = None
                 ) -> Union[
-                    Tuple[List[float], List[torch.scalar_tensor], Symple],
-                    Tuple[List[float], List[torch.scalar_tensor], List[torch.scalar_tensor], Symple],
+                    Tuple[List[float], List[torch.Tensor], Symple],
+                    Tuple[List[float], List[torch.Tensor], List[torch.Tensor], Symple],
                     Symple
                 ]:
         if behavior_policy:

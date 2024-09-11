@@ -36,11 +36,12 @@ df['symple_envs'] = df['expr'].apply(Symple.from_sympy,
 
 
 # Initialize the agent and optimizer
-hidden_size = 64
-embedding_size = 32
+hidden_size = 128
+embedding_size = 16
 agent = SympleAgent(
     hidden_size, embedding_size,
-
+    ffn_n_layers=2,
+    # lstm_n_layers=2,
 )
 optimizer = torch.optim.Adam(agent.parameters(), lr=0.001)
 
@@ -51,7 +52,7 @@ batch_size = 64
 
 total_time = 0
 
-losses = []
+returns = []
 total_time = 0
 
 
@@ -68,7 +69,7 @@ for epoch in range(num_epochs):
         
         # Measure time for training on the batch
         start_time = time.time()
-        avg_loss = train_on_batch(agent, batch, optimizer,
+        avg_return = train_on_batch(agent, batch, optimizer,
                                   behavior_policy=random_policy
                                   )
         end_time = time.time()
@@ -76,20 +77,20 @@ for epoch in range(num_epochs):
         batch_time = end_time - start_time
         total_time += batch_time
         
-        losses.append(avg_loss)
+        returns.append(avg_return)
         
         batch_number = epoch * (len(shuffled_data) // batch_size) + (i // batch_size) + 1
-        print(f"Epoch {epoch + 1}/{num_epochs}, Batch {batch_number}, Loss: {avg_loss:.4f}, Batch Time: {batch_time:.4f} seconds")
+        print(f"Epoch {epoch + 1}/{num_epochs}, Batch {batch_number}, Return: {avg_return:.4f}, Batch Time: {batch_time:.4f} seconds")
 
 avg_time_per_batch = total_time / (num_epochs * (len(df) // batch_size))
 print(f"Training completed. Average time per batch: {avg_time_per_batch:.4f} seconds")
 
 # Plot the loss history
 plt.figure(figsize=(10, 5))
-plt.plot(range(1, len(losses) + 1), losses)
-plt.title('Loss vs Batch Number')
+plt.plot(range(1, len(returns) + 1), returns)
+plt.title('Return vs Batch Number')
 plt.xlabel('Batch Number')
-plt.ylabel('Loss')
+plt.ylabel('Return')
 plt.axhline(y=0, color='k', linestyle='-', linewidth=0.5)  # Add horizontal line at y=0
-plt.savefig(ROOT_DIR + '/train/loss_history.png')
+plt.savefig(ROOT_DIR + '/train/return_history.png')
 

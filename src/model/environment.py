@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Optional
 
 import torch
 
@@ -98,25 +98,34 @@ class Symple:
 
     def __init__(
         self,
-        expr: "ExprNode",
+        expr: ExprNode,
+        state: Optional[ExprNode] = None,
         time_penalty: float = -0.02,
         node_count_importance_factor: float = 1.0,
+        min_steps: int = 0,
     ):
         self.expr = expr
-        self.state = expr
+        self.state = expr if state is None else state
         self.validity_mask = torch.ones(NUM_OPS, dtype=int)
-        self.update_validity_mask()
         self.time_penalty = time_penalty
         self.node_count_importance_factor = node_count_importance_factor
-
-    def step(self, action: int) -> Tuple[float, bool]:
-        reward = self.time_penalty
-        
-        self.state, node_count_reduction = OPS_MAP[action](self.state)
-        
+        self.min_steps = min_steps
         self.update_validity_mask()
+
+    def step(self, action: int) -> Tuple["Symple", float, bool]:
+        reward = self.time_penalty
+            
+        state, node_count_reduction = OPS_MAP[action](self.state)
+        
+        new_env = Symple(
+            self.expr, state, self.time_penalty, self.node_count_importance_factor,
+            max(self.min_steps - 1, 0)
+        )
+        
         reward += self.node_count_importance_factor * node_count_reduction
-        return reward, action == OP_FINISH
+        
+
+        return new_env, reward, action == OP_FINISH
 
     def update_validity_mask(self) -> None:
         self.validity_mask[OP_MOVE_UP] = bool(self.state.p)
@@ -128,8 +137,15 @@ class Symple:
         self.validity_mask[OP_UNDISTRIBUTE_B] = self.state.can_undistribute_b()
         self.validity_mask[OP_REDUCE_UNIT] = self.state.can_reduce_unit()
         self.validity_mask[OP_CANCEL] = self.state.can_cancel()
-        self.validity_mask[OP_FINISH] = True
+        self.validity_mask[OP_FINISH] = self.min_steps <= 0
+    
+    def reset(self) -> None:
+        self.state = self.expr
+        self.min_steps = self.min_steps_initial
+        for en in self.state.topological_sort():
+            en.reset_cache()
 
+    @staticmethod
     @staticmethod
     def from_sympy(expr: sp.Expr, **kwargs) -> "Symple":
         return Symple(ExprNode.from_sympy(expr), **kwargs)
