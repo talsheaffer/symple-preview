@@ -9,11 +9,13 @@ import sympy as sp
 import pandas as pd
 import torch
 
-from src.model.environment import Symple
+# from src.model.environment import Symple
 from src.model.model import SympleAgent
 from src.model.training import train_on_batch
+from src.model.tree import ExprNode
 
-from aux_policies import random_policy
+# from aux_policies import random_policy
+# behavior_policy = random_policy
 
 # Load the dataset
 from definitions import ROOT_DIR
@@ -27,9 +29,9 @@ with open(ROOT_DIR + "/data/dataset.json", "r") as f:
     df = pd.read_json(f)
 df[df.columns[:3]] = df[df.columns[:3]].map(sp.sympify)
 
-df['symple_envs'] = df['expr'].apply(Symple.from_sympy,
-                                     time_penalty=0., # Additional keyward args to be passed to Symple.from_sympy
-                                     )
+# df['symple_envs'] = df['expr'].apply(Symple.from_sympy,
+#                                      time_penalty=0., # Additional keyward args to be passed to Symple.from_sympy
+#                                      )
 
 
 
@@ -37,9 +39,9 @@ df['symple_envs'] = df['expr'].apply(Symple.from_sympy,
 
 # Initialize the agent and optimizer
 hidden_size = 128
-embedding_size = 16
+# embedding_size = 16
 agent = SympleAgent(
-    hidden_size, embedding_size,
+    hidden_size,
     ffn_n_layers=2,
     # lstm_n_layers=2,
 )
@@ -47,7 +49,7 @@ optimizer = torch.optim.Adam(agent.parameters(), lr=0.001)
 
 # Training loop
 num_epochs = 10
-batch_size = 64
+batch_size = 32
 
 
 total_time = 0
@@ -62,16 +64,20 @@ total_time = 0
 
 for epoch in range(num_epochs):
     # Shuffle the dataset
-    shuffled_data = df['symple_envs'].sample(frac=1).reset_index(drop=True)
+    shuffled_data = df['expr'].sample(frac=1).reset_index(drop=True)
     
-    for i in range(0, len(shuffled_data), batch_size):
-        batch = shuffled_data[i:i+batch_size].tolist()
+    for i in range(0, batch_size * (len(shuffled_data) // batch_size), batch_size):
+        batch = shuffled_data[i:i+batch_size].apply(ExprNode.from_sympy).tolist()
         
         # Measure time for training on the batch
         start_time = time.time()
         avg_return = train_on_batch(agent, batch, optimizer,
-                                  behavior_policy=random_policy
-                                  )
+                                    # behavior_policy=behavior_policy,
+                                    **dict(
+                                        time_penalty=0.02,
+                                        min_steps=20,
+                                    )
+                                )
         end_time = time.time()
         
         batch_time = end_time - start_time

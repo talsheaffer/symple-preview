@@ -2,7 +2,8 @@
 import torch
 from src.model.model import SympleAgent
 from src.model.environment import Symple
-from typing import List, Callable, Union, Optional, Tuple
+from src.model.tree import ExprNode
+from typing import List, Callable, Union, Optional, Tuple, Dict, Any
 
 def compute_loss(rewards: List[float], action_log_probs: List[torch.Tensor], gamma: float = 1.) -> Tuple[torch.Tensor, float]:
     """
@@ -15,6 +16,7 @@ def compute_loss(rewards: List[float], action_log_probs: List[torch.Tensor], gam
     
     Returns:
     torch.Tensor: The computed loss.
+    float: The total return.
     """
     T = len(rewards)
     returns = torch.zeros(T, device=action_log_probs[0].device)
@@ -25,7 +27,6 @@ def compute_loss(rewards: List[float], action_log_probs: List[torch.Tensor], gam
         future_return = rewards[t] + gamma * future_return
         returns[t] = future_return
 
-    
     # Compute loss
     action_log_probs = torch.stack(action_log_probs)
     loss = -(returns * action_log_probs).sum()
@@ -34,7 +35,7 @@ def compute_loss(rewards: List[float], action_log_probs: List[torch.Tensor], gam
 
 def compute_loss_off_policy(
         rewards: List[float], target_policy_probs: List[torch.Tensor], behavior_policy_probs: List[torch.Tensor], gamma: float = 1.
-) -> torch.Tensor:
+) -> Tuple[torch.Tensor, float]:
     """
     Compute the loss for off-policy Monte Carlo training.
     
@@ -46,12 +47,13 @@ def compute_loss_off_policy(
     
     Returns:
     torch.Tensor: The computed loss.
+    float: The total return.
     """
     # Compute importance sampling ratios
-
     target_policy_probs = torch.stack(target_policy_probs)
     behavior_policy_probs = torch.stack(behavior_policy_probs)
     importance_ratios = target_policy_probs / behavior_policy_probs.detach() # Detach to prevent gradient flow
+    
     # Compute discounted returns using importance sampling
     total_return = torch.zeros(1, device=target_policy_probs[0].device)
     for t in reversed(range(len(rewards))):
@@ -59,41 +61,43 @@ def compute_loss_off_policy(
 
     loss = -total_return
     
-    return loss
-
-
+    return loss, total_return.item()
 
 def train_on_batch(
-        agent: SympleAgent, envs: List[Symple], optimizer: torch.optim.Optimizer,
-        behavior_policy: Optional[Callable[[Symple], Union[torch.Tensor, List[float]]]] = None,
+        agent: SympleAgent, expr_nodes: List[ExprNode], optimizer: torch.optim.Optimizer,
+        behavior_policy: Optional[Callable[[ExprNode, tuple[int, ...], Symple], Union[torch.Tensor, List[float]]]] = None,
+        **symple_kwargs: Dict[str, Any]
 ) -> float:
     """
-    Train the agent on a batch of Symple environment instances.
+    Train the agent on a batch of ExprNodes.
 
     Args:
     agent (SympleAgent): The agent to train.
-    envs (List[Symple]): A list of Symple environment instances to train on.
+    expr_nodes (List[ExprNode]): A list of ExprNode instances to train on.
     optimizer (torch.optim.Optimizer): The optimizer to use for training.
-    behavior_policy (Callable[[Symple], Union[torch.Tensor, List[float]]]): The behavior policy to use for off-policy training if given.
+    behavior_policy (Callable[[ExprNode, tuple[int, ...], Symple], Union[torch.Tensor, List[float]]]): The behavior policy to use for off-policy training if given.
+    **symple_kwargs: Keyword arguments to pass to Symple constructor for each ExprNode.
 
     Returns:
-    float: The average loss for this batch.
+    float: The average return for this batch.
     """
     agent.train()
     optimizer.zero_grad()
 
     avg_return = 0.0
-    for env in envs:
+    for en in expr_nodes:
+        env = Symple(**symple_kwargs)
         if behavior_policy:
-            rewards, action_probs, behavior_action_probs, _ = agent(env, behavior_policy = behavior_policy)
-            loss = compute_loss_off_policy(rewards, action_probs, behavior_action_probs) / len(envs)
-            total_return = -loss.item()
+            rewards, action_probs, behavior_action_probs, _ = agent(en, env, behavior_policy=behavior_policy)
+            loss, total_return = compute_loss_off_policy(rewards, action_probs, behavior_action_probs)
+            loss = loss / len(expr_nodes)
         else:
-            rewards, action_log_probs, _ = agent(env)
-            loss, total_return = compute_loss(rewards, action_log_probs) 
-            loss, total_return = loss/len(envs), total_return/len(envs)
+            rewards, action_log_probs, _ = agent(en, env)
+            loss, total_return = compute_loss(rewards, action_log_probs)
+            loss = loss / len(expr_nodes)
+        
         loss.backward()
-        avg_return += total_return
+        avg_return += total_return / len(expr_nodes)
 
     # Perform optimization step
     optimizer.step()

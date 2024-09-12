@@ -1,20 +1,25 @@
-from typing import Tuple, Optional
+from typing import Tuple#, Optional
 
 import torch
 
-from src.model.tree import ExprNode
+from src.model.tree import ExprNode, INF_TYPE
 from src.utils import iota
 
 import sympy as sp
 
+def apply_op_for_no_change(op_func):
+    def wrapper(expr: ExprNode, coord: tuple[int, ...]) -> Tuple[ExprNode, tuple[int, ...], int]:
+        new_expr = expr.apply_at_coord(coord, op_func)
+        return new_expr, coord, 0
+    return wrapper
 
 def apply_op_and_count(op_func):
-    def wrapper(expr: ExprNode) -> Tuple[ExprNode, int]:
-        initial_count = expr.node_count()
-        result = op_func(expr)
-        final_count = result.node_count()
+    def wrapper(expr: ExprNode, coord: tuple[int, ...]) -> Tuple[ExprNode, tuple[int, ...], int]:
+        initial_count = expr.get_node(coord).node_count()
+        new_expr = expr.apply_at_coord(coord, op_func)
+        final_count = new_expr.get_node(coord).node_count()
         reduction = initial_count - final_count
-        return result, reduction
+        return new_expr, coord, reduction
     return wrapper
 
 
@@ -22,29 +27,28 @@ it = iota()
 OPS_MAP = []
 
 OP_FINISH = next(it)
-def op_finish(expr: ExprNode) -> Tuple[ExprNode, int]:
-    return expr, 0
+@apply_op_for_no_change
+def op_finish(expr: ExprNode) -> ExprNode:
+    return expr
 OPS_MAP.append(op_finish)
 
 OP_MOVE_UP = next(it)
-def op_move_up(expr: ExprNode) -> Tuple[ExprNode, int]:
-    return expr.p, 0
+def op_move_up(expr: ExprNode, coord: tuple[int, ...]) -> Tuple[ExprNode, tuple[int, ...], int]:
+    new_coord = coord[:-1] if coord else coord
+    return expr, new_coord, 0
 OPS_MAP.append(op_move_up)
 
 OP_MOVE_LEFT = next(it)    
-def op_move_left(expr: ExprNode) -> Tuple[ExprNode, int]:
-    return expr.a, 0
+def op_move_left(expr: ExprNode, coord: tuple[int, ...]) -> Tuple[ExprNode, tuple[int, ...], int]:
+    new_coord = coord + (0,)
+    return expr, new_coord, 0
 OPS_MAP.append(op_move_left)
 
 OP_MOVE_RIGHT = next(it)
-def op_move_right(expr: ExprNode) -> Tuple[ExprNode, int]:
-    return expr.b, 0
+def op_move_right(expr: ExprNode, coord: tuple[int, ...]) -> Tuple[ExprNode, tuple[int, ...], int]:
+    new_coord = coord + (1,)
+    return expr, new_coord, 0
 OPS_MAP.append(op_move_right)
-
-OP_PASS = next(it)
-def op_pass(expr: ExprNode) -> Tuple[ExprNode, int]:
-    return expr, 0
-OPS_MAP.append(op_pass)
 
 OP_COMMUTE = next(it)
 @apply_op_and_count
@@ -91,61 +95,67 @@ NUM_OPS = next(it)
 # Consider using Open-Ai Gym?
 class Symple:
     """
-    An RL environment with which the agent should interact. To enrich the s
-    et of operations we must update the variable OPS and the method Symple.update_validity_mask. The operations should return (state : the new ExprNode, reward: float, don
-    e : bool).
+    An RL environment with which the agent should interact. To enrich the set
+    of operations we must update the variable OPS and the method Symple.get_validity_mask.
+    The operations should return (state: ExprNode, reward: float, done: bool).
     """
 
     def __init__(
         self,
-        expr: ExprNode,
-        state: Optional[ExprNode] = None,
         time_penalty: float = -0.02,
         node_count_importance_factor: float = 1.0,
         min_steps: int = 0,
+        max_steps: int = 1000,
     ):
-        self.expr = expr
-        self.state = expr if state is None else state
-        self.validity_mask = torch.ones(NUM_OPS, dtype=int)
         self.time_penalty = time_penalty
         self.node_count_importance_factor = node_count_importance_factor
         self.min_steps = min_steps
-        self.update_validity_mask()
 
-    def step(self, action: int) -> Tuple["Symple", float, bool]:
-        reward = self.time_penalty
-            
-        state, node_count_reduction = OPS_MAP[action](self.state)
+    def step(self, expr: ExprNode, current_coord: tuple[int, ...], action: int) -> Tuple[ExprNode, tuple[int, ...], float, bool]:
+        reward = self.time_penalty if self.min_steps == 0 else 0.
         
-        new_env = Symple(
-            self.expr, state, self.time_penalty, self.node_count_importance_factor,
-            max(self.min_steps - 1, 0)
-        )
+        new_expr, new_coord, node_count_reduction = OPS_MAP[action](expr, current_coord)
         
         reward += self.node_count_importance_factor * node_count_reduction
         
+        if self.max_steps > 0:
+            self.max_steps -= 1
+        if self.min_steps > 0:
+            self.min_steps -= 1
+        
+        
+        done = action == OP_FINISH or self.max_steps == 0
+        
 
-        return new_env, reward, action == OP_FINISH
+        return new_expr, new_coord, reward, done
 
-    def update_validity_mask(self) -> None:
-        self.validity_mask[OP_MOVE_UP] = bool(self.state.p)
-        self.validity_mask[OP_MOVE_LEFT] = bool(self.state.a)
-        self.validity_mask[OP_MOVE_RIGHT] = bool(self.state.b)
-        self.validity_mask[OP_COMMUTE] = self.state.can_commute()
-        self.validity_mask[OP_ASSOCIATE_B] = self.state.can_associate_b()
-        self.validity_mask[OP_DISTRIBUTE_B] = self.state.can_distribute_b()
-        self.validity_mask[OP_UNDISTRIBUTE_B] = self.state.can_undistribute_b()
-        self.validity_mask[OP_REDUCE_UNIT] = self.state.can_reduce_unit()
-        self.validity_mask[OP_CANCEL] = self.state.can_cancel()
-        self.validity_mask[OP_FINISH] = self.min_steps <= 0
-    
-    def reset(self) -> None:
-        self.state = self.expr
-        self.min_steps = self.min_steps_initial
-        for en in self.state.topological_sort():
-            en.reset_cache()
+    def get_validity_mask(self, expr: ExprNode, coord: tuple[int, ...] = ()) -> torch.Tensor:
+        current_node = expr.get_node(coord)
+        # If we are at the infinity node, we must finish.
+        if current_node.type == INF_TYPE:
+            validity_mask = torch.zeros(NUM_OPS, dtype=int)
+            validity_mask[OP_FINISH] = 1
+            return validity_mask
+        
+        validity_mask = torch.ones(NUM_OPS, dtype=int)
+
+        validity_mask[OP_MOVE_UP] = bool(current_node.p)
+        validity_mask[OP_MOVE_LEFT] = bool(current_node.a)
+        validity_mask[OP_MOVE_RIGHT] = bool(current_node.b)
+        validity_mask[OP_COMMUTE] = current_node.can_commute()
+        validity_mask[OP_ASSOCIATE_B] = current_node.can_associate_b()
+        validity_mask[OP_DISTRIBUTE_B] = current_node.can_distribute_b()
+        validity_mask[OP_UNDISTRIBUTE_B] = current_node.can_undistribute_b()
+        validity_mask[OP_REDUCE_UNIT] = current_node.can_reduce_unit()
+        validity_mask[OP_CANCEL] = current_node.can_cancel()
+        validity_mask[OP_FINISH] = self.min_steps <= 0
+        validity_mask[OP_FINISH] = validity_mask[OP_FINISH] or not any(validity_mask) # If we can't do anything, we must finish.
+        
+        return validity_mask
 
     @staticmethod
-    @staticmethod
-    def from_sympy(expr: sp.Expr, **kwargs) -> "Symple":
-        return Symple(ExprNode.from_sympy(expr), **kwargs)
+    def from_sympy(expr: sp.Expr, **kwargs) -> Tuple[ExprNode, tuple[int, ...], "Symple"]:
+        initial_expr = ExprNode.from_sympy(expr)
+        initial_coord = ()
+        env = Symple(**kwargs)
+        return initial_expr, initial_coord, env
