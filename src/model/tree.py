@@ -12,7 +12,9 @@ MUL_TYPE = next(it)
 DIV_TYPE = next(it)
 POW_TYPE = next(it)
 INT_NE_TYPE = next(it)
-INT_PO_TYPE = next(it)  # non-negative
+INT_PO_TYPE = next(it)
+INT_ZERO_TYPE = next(it)
+INF_TYPE = next(it)
 X_TYPE = next(it)
 Y_TYPE = next(it)
 Z_TYPE = next(it)
@@ -27,22 +29,24 @@ TYPE_LIST = [
     POW_TYPE,
     INT_NE_TYPE,
     INT_PO_TYPE,
+    INT_ZERO_TYPE,
+    INF_TYPE,
     X_TYPE,
     Y_TYPE,
     Z_TYPE,
 ]
 
-SYMPY_TO_TYPE_MAP = (
-    {
-        sp.Add: ADD_TYPE,
-        sp.Mul: MUL_TYPE,
-        sp.Pow: POW_TYPE,
-        sp.Integer: INT_NE_TYPE,
-        sp.Symbol("x"): X_TYPE,
-        sp.Symbol("y"): Y_TYPE,
-        sp.Symbol("z"): Z_TYPE,
-    },
-)
+SYMPY_TO_TYPE_MAP = {   
+    sp.Add: ADD_TYPE,
+    sp.Mul: MUL_TYPE,
+    sp.Pow: POW_TYPE,
+    sp.Integer: INT_NE_TYPE,
+    sp.Symbol("x"): X_TYPE,
+    sp.Symbol("y"): Y_TYPE,
+    sp.Symbol("z"): Z_TYPE,
+    sp.core.numbers.Infinity: INF_TYPE,
+    sp.core.numbers.ComplexInfinity: INF_TYPE,
+}
 
 SYMPY_SYMBOL_MAP = {
     "x": X_TYPE,
@@ -50,14 +54,14 @@ SYMPY_SYMBOL_MAP = {
     "z": Z_TYPE,
 }
 
-ARG_NULL = 0
+ARG_NULL = 1
 
 
 class ExprNode(object):
     def __init__(
         self,
         type: int,
-        arg: int,
+        arg: int = ARG_NULL,
         a: "ExprNode" = None,
         b: "ExprNode" = None,
         p: "ExprNode" = None,
@@ -69,8 +73,12 @@ class ExprNode(object):
         self.arg = arg
         self.a = a
         self.b = b
+        if self.a is not None:
+            self.a.p = self
+        if self.b is not None:
+            self.b.p = self
         self.p = p
-        self.embedding = embedding
+        # self.embedding = embedding# if embedding is not None else torch.nn.functional.one_hot(torch.tensor([[type]]), num_classes=VOCAB_SIZE).to(DEFAULT_DEVICE, DEFAULT_DTYPE)
         self.hidden = hidden
         self.cell = cell
 
@@ -80,11 +88,40 @@ class ExprNode(object):
             self.b.p = self
 
     def node_count(self) -> int:
-        return 1 + sum(child.node_count() for child in self.children)
+        return 1 + sum(child.node_count() for child in self.children if child is not None)
+    
+    def get_node(self, coord: tuple[int, ...]) -> "ExprNode":
+        if not coord:
+            return self
+        else:
+            return self.children[coord[0]].get_node(coord[1:])
+    
+    def apply_at_coord(self, coord: tuple[int, ...], fn: callable) -> "ExprNode":
+        if not coord:
+            return fn(self)
+        elif coord[0] == 0:
+            self.a = self.a.apply_at_coord(coord[1:], fn)
+        elif coord[0] == 1:
+            self.b = self.b.apply_at_coord(coord[1:], fn)
+        else:
+            raise ValueError(f"Invalid coordinate {coord}")
+        self.ensure_parenthood()
+        return self
+    
+    def get_coords(self)->list[tuple[int, ...]]:
+        return [()] + (
+            [(0,) + tup for tup in self.a.get_coords()] if self.a is not None else []
+        ) + (
+            [(1,) + tup for tup in self.b.get_coords()] if self.b is not None else []
+        )
 
     @property
+    def arg_hot(self):
+        return self.arg * torch.nn.functional.one_hot(torch.tensor([self.type]), num_classes=VOCAB_SIZE).to(DEFAULT_DEVICE, DEFAULT_DTYPE)
+    
+    @property
     def children(self):
-        return [x for x in [self.a, self.b] if x is not None]
+        return (self.a, self.b)
 
     def topological_sort(self) -> list:
         if self.a is None and self.b is None:
@@ -95,50 +132,81 @@ class ExprNode(object):
             return self.a.topological_sort() + self.b.topological_sort() + [self]
 
     @classmethod
-    def from_sympy(cls, expr: sp.Expr, p: "ExprNode" = None) -> "ExprNode":
+    def from_sympy(cls, expr: sp.Expr, **kwargs) -> "ExprNode":
         if isinstance(expr, sp.Add):
-            type_, arg = ADD_TYPE, ARG_NULL
+            type, arg = ADD_TYPE, ARG_NULL
         elif isinstance(expr, sp.Mul):
-            type_, arg = MUL_TYPE, ARG_NULL
+            type, arg = MUL_TYPE, ARG_NULL
         elif isinstance(expr, sp.Pow):
-            type_, arg = POW_TYPE, ARG_NULL
+            type, arg = POW_TYPE, ARG_NULL
         elif isinstance(expr, sp.Rational):
             if isinstance(expr, sp.Integer):
-                type_, arg = INT_NE_TYPE if expr < 0 else INT_PO_TYPE, abs(int(expr))
+                if expr == 0:
+                    type, arg = INT_ZERO_TYPE, ARG_NULL
+                elif expr > 0:
+                    type, arg = INT_PO_TYPE, int(expr)
+                else:
+                    type, arg = INT_NE_TYPE, abs(int(expr))
             else:
-                type_, arg = DIV_TYPE, ARG_NULL
+                type, arg = DIV_TYPE, ARG_NULL
         elif isinstance(expr, sp.Symbol) and expr.name in SYMPY_SYMBOL_MAP:
-            type_, arg = SYMPY_SYMBOL_MAP[expr.name], ARG_NULL
+            type, arg = SYMPY_SYMBOL_MAP[expr.name], ARG_NULL
+        elif type(expr) in SYMPY_TO_TYPE_MAP:
+            type, arg = SYMPY_TO_TYPE_MAP[type(expr)], ARG_NULL
         else:
             raise NotImplementedError(f"Unsupported expression type {type(expr)}")
 
-        en = ExprNode(
-            type=type_,
-            arg=arg,
-        )
+        a, b = None, None
         if isinstance(expr, (sp.Add, sp.Mul)):
-            en.a = cls.from_sympy(expr.args[0], p=en)
-            en.b = cls.from_sympy(expr.func(*expr.args[1:], evaluate=True), p=en)
+            a = cls.from_sympy(expr.args[0])
+            b = cls.from_sympy(expr.func(*expr.args[1:], evaluate=True))
         elif isinstance(expr, sp.Pow):
-            en.a = cls.from_sympy(expr.args[0], p=en)
-            en.b = cls.from_sympy(expr.args[1], p=en)
+            a = cls.from_sympy(expr.args[0])
+            b = cls.from_sympy(expr.args[1])
         elif isinstance(expr, sp.Rational):
             if not isinstance(expr, sp.Integer):
-                en.a = cls.from_sympy(sp.sympify(expr.p), p=en)
-                en.b = cls.from_sympy(sp.sympify(expr.q), p=en)
+                a = cls.from_sympy(sp.sympify(expr.p))
+                b = cls.from_sympy(sp.sympify(expr.q))
 
+        en = ExprNode(
+            type=type,
+            arg=arg,
+            a=a,
+            b=b,
+            **kwargs
+        )
         return en
 
+    @classmethod
+    def from_ExprNode(cls, en: "ExprNode")->"ExprNode":
+        return ExprNode(
+            type=en.type,
+            arg=en.arg,
+            a=cls.from_ExprNode(en.a) if en.a is not None else None,
+            b=cls.from_ExprNode(en.b) if en.b is not None else None,
+            p=en.p,
+            # embedding=en.embedding.clone(),
+            hidden=en.hidden.clone() if en.hidden is not None else None,
+            cell=en.cell.clone() if en.cell is not None else None,
+        )
+    
     def reset(self)->None:
-        self.embedding = None
+        # self.embedding = None
         self.hidden = None
         self.cell = None
+        (c.reset() for c in self.children if c is not None)
 
     def to_tensor(self, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE) -> torch.Tensor:
         tensor = torch.zeros((2,), device=device, dtype=dtype)
         tensor[0] = self.type
         tensor[1] = self.arg
         return tensor
+    
+    def ensure_parenthood(self)->None:
+        if self.a is not None:
+            self.a.p = self
+        if self.b is not None:
+            self.b.p = self
 
     def can_commute(self) -> bool:
         # Field Axiom
@@ -202,29 +270,30 @@ class ExprNode(object):
         if not self.can_commute():
             raise ValueError(f"Cannot commute {self.type}.")
 
-        return ExprNode(
-            type=self.type,
-            arg=ARG_NULL,
-            a=self.b,
-            b=self.a,
-        )
+        en = ExprNode.from_ExprNode(self)
+        en.a, en.b = en.b, en.a
+        return en
 
     def associate_b(self) -> "ExprNode":
         # Field Axiom
         if not self.can_associate_b():
             raise ValueError(f"Cannot associate {self.type}.")
 
-        a, b = self.a, self.b
         return ExprNode(
             type=self.type,
-            arg=ARG_NULL,
-            a=ExprNode(
-                type=self.type,
-                arg=ARG_NULL,
-                a=a,
-                b=b.a,
+            arg=self.arg,
+            a= ExprNode(
+                type=self.b.type,
+                arg=self.b.arg,
+                a=self.a,
+                b=self.b.a,
+                hidden=self.b.hidden.clone() if self.b.hidden is not None else None,
+                cell=self.b.cell.clone() if self.b.cell is not None else None,
             ),
-            b=b.b,
+            b=self.b.b,
+            p=self.p,
+            hidden=self.hidden.clone() if self.hidden is not None else None,
+            cell=self.cell.clone() if self.cell is not None else None,
         )
 
     def distribute_b(self) -> "ExprNode":
@@ -232,22 +301,28 @@ class ExprNode(object):
         if not self.can_distribute_b():
             raise ValueError(f"Cannot distribute {self.type}.")
 
-        a, b = self.a, self.b
         return ExprNode(
-            type=b.type,
+            type=self.b.type,
             arg=ARG_NULL,
             a=ExprNode(
                 type=self.type,
                 arg=ARG_NULL,
-                a=a,
-                b=b.a,
+                a=self.a,
+                b=self.b.a,
+                hidden = self.b.a.hidden.clone() if self.b.a is not None else None,
+                cell = self.b.a.cell.clone() if self.b.a is not None else None,
             ),
             b=ExprNode(
                 type=self.type,
                 arg=ARG_NULL,
-                a=a,
-                b=b.b,
+                a=ExprNode.from_ExprNode(self.a), # Duplicate self.a
+                b=self.b.b,
+                hidden = self.b.b.hidden.clone() if self.b.b is not None else None,
+                cell = self.b.b.cell.clone() if self.b.b is not None else None,
             ),
+            p = self.p,
+            hidden=self.hidden.clone() if self.hidden is not None else None,
+            cell=self.cell.clone() if self.cell is not None else None,
         )
 
     def undistribute_b(self) -> "ExprNode":
@@ -265,7 +340,12 @@ class ExprNode(object):
                 arg=ARG_NULL,
                 a=a.b,
                 b=b.b,
+                hidden=self.hidden.clone() if self.hidden is not None else None,
+                cell=self.cell.clone() if self.cell is not None else None,
             ),
+            p=self.p,
+            hidden=self.a.hidden.clone() if self.a.hidden is not None else None,
+            cell=self.a.cell.clone() if self.a.cell is not None else None,
         )
 
     def reduce_unit(self) -> "ExprNode":
@@ -274,28 +354,43 @@ class ExprNode(object):
             raise ValueError(f"Cannot reduce unit {self.type}.")
 
         a, b = self.a, self.b
-        if self.type == ADD_TYPE:
-            return b if a == zero else a
-        elif self.type == MUL_TYPE:
-            return b if a == one else a
-        elif self.type == POW_TYPE:
-            if b == zero:
-                return one
-            elif b == one:
-                return self.a
-            elif a == zero and b.type == INT_PO_TYPE and b.arg >0:
-                return zero
-            elif a == one:
-                return one
 
-        raise ImportError("Something went wrong")
+        if self.type == ADD_TYPE:
+            en = b if a == zero else a
+        elif self.type == MUL_TYPE:
+            en = b if a == one else a
+        elif self.type == POW_TYPE: # TODO: handle infinities
+            if b == zero:
+                en = one
+            elif b == one:
+                en = self.a
+            elif a == zero:
+                if b.type == INT_PO_TYPE:
+                    en = zero
+                elif b.type == INT_NE_TYPE:
+                    en = inf
+            elif a == one:
+                en = one
+            else:
+                raise ValueError(f"Cannot reduce unit {self.type}.")
+            en.hidden = self.hidden.clone() if self.hidden is not None else None
+            en.cell = self.cell.clone() if self.cell is not None else None
+        
+        en.p = self.p
+        en.ensure_parenthood()
+
+        return en
 
     def cancel(self) -> "ExprNode":
         # Field Property
         if not self.can_cancel():
             raise ValueError(f"Cannot cancel {self.type}.")
 
-        return zero
+        en = zero
+        en.p = self.p
+        en.hidden = self.hidden.clone() if self.hidden is not None else None
+        en.cell = self.cell.clone() if self.cell is not None else None
+        return en
 
     def __eq__(self, value: object) -> bool:
         return (
@@ -320,6 +415,8 @@ class ExprNode(object):
             return f"(-{self.arg})"
         elif self.type == INT_PO_TYPE:
             return f"{self.arg}"
+        elif self.type == INT_ZERO_TYPE:
+            return "0"
         elif self.type in [X_TYPE, Y_TYPE, Z_TYPE]:
             return {
                 X_TYPE: "x",
@@ -330,6 +427,8 @@ class ExprNode(object):
             return "Invalid expression type"
 
 
-one = ExprNode(INT_PO_TYPE, 1)
-minus_one = ExprNode(INT_NE_TYPE, 1)
-zero = ExprNode(INT_PO_TYPE, 0)
+one = ExprNode(INT_PO_TYPE)
+minus_one = ExprNode(INT_NE_TYPE)
+zero = ExprNode(INT_ZERO_TYPE)
+inf = ExprNode(INF_TYPE)
+
