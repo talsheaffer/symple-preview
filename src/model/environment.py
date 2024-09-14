@@ -104,13 +104,15 @@ class Symple:
         self,
         time_penalty: float = -0.02,
         node_count_importance_factor: float = 1.0,
+        compute_penalty_coefficient: float = 1e-6,
         min_steps: int = 0,
         max_steps: int = 1000,
     ):
         self.time_penalty = time_penalty
         self.node_count_importance_factor = node_count_importance_factor
         self.min_steps = min_steps
-
+        self.compute_penalty_coefficient = compute_penalty_coefficient
+        self.max_steps = max_steps
     def step(self, expr: ExprNode, current_coord: tuple[int, ...], action: int) -> Tuple[ExprNode, tuple[int, ...], float, bool]:
         reward = self.time_penalty if self.min_steps == 0 else 0.
         
