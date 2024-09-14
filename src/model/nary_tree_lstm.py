@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
-from typing import Tuple, Tensor
+from typing import Tuple
+from torch import Tensor
 from math import inf
 
 from src.model.tree import ExprNode
@@ -88,11 +89,11 @@ class NaryTreeLSTM(nn.Module):
         cell = torch.cat(cell, dim=-1)
         
         i = torch.sigmoid(self.W_i(input) + self.U_i(hidden))
-        f = torch.sigmoid(self.W_f(input) + self.U_f(cell).view(self.N, self.H))
+        f = torch.sigmoid(self.W_f(input) + self.U_f(cell).view(hidden.shape[-2], self.N, self.hidden_size))
         o = torch.sigmoid(self.W_o(input) + self.U_o(hidden))
         u = torch.tanh(self.W_u(input) + self.U_u(hidden))
         
-        cell = (i * u) + (f * cell).sum(dim=0)
+        cell = (i * u) + (f * cell.view(hidden.shape[-2], self.N, self.hidden_size)).sum(dim=-2)
         hidden = o * torch.tanh(cell)
 
         return hidden, cell

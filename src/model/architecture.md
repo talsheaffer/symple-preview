@@ -86,7 +86,7 @@ The actions come in a few types:
 
 # Problems
 
-1. Resetting environment
+
 
 # Possible imporvements
 

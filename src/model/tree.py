@@ -1,5 +1,6 @@
 import sympy as sp
 import torch
+from numpy import inf
 
 from src.model.model_default import DEFAULT_DEVICE, DEFAULT_DTYPE
 from src.utils import iota
@@ -87,8 +88,11 @@ class ExprNode(object):
         if self.b is not None:
             self.b.p = self
 
-    def node_count(self) -> int:
-        return 1 + sum(child.node_count() for child in self.children if child is not None)
+    def node_count(self, depth: int = inf) -> int:
+        if depth == 0:
+            return 1
+        else:
+            return 1 + sum(child.node_count(depth-1) for child in self.children if child is not None)
     
     def get_node(self, coord: tuple[int, ...]) -> "ExprNode":
         if not coord:
@@ -368,7 +372,7 @@ class ExprNode(object):
                 if b.type == INT_PO_TYPE:
                     en = zero
                 elif b.type == INT_NE_TYPE:
-                    en = inf
+                    en = inf_node
             elif a == one:
                 en = one
             else:
@@ -430,5 +434,5 @@ class ExprNode(object):
 one = ExprNode(INT_PO_TYPE)
 minus_one = ExprNode(INT_NE_TYPE)
 zero = ExprNode(INT_ZERO_TYPE)
-inf = ExprNode(INF_TYPE)
+inf_node = ExprNode(INF_TYPE)
 
