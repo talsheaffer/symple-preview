@@ -14,9 +14,15 @@ with open(os.path.join(json_dir, latest_json), 'r') as f:
     data = json.load(f)
 
 # Extract necessary data
-batch_numbers = [entry['batch_number'] for entry in data]
-returns = [entry['avg_return'] for entry in data]
-eval_times = [entry['avg_eval_time'] for entry in data]
+batch_numbers = []
+returns = []
+eval_times = []
+for entry in data:
+    epoch = entry['epoch']
+    batch_in_epoch = entry['batch_number']
+    batch_numbers.append((epoch - 1) * max(entry['batch_number'] for entry in data if entry['epoch'] == epoch) + batch_in_epoch)
+    returns.append(entry['avg_return'])
+    eval_times.append(entry['avg_eval_time'])
 
 # Create figures subfolder if it doesn't exist
 figures_dir = os.path.join(ROOT_DIR, 'train', 'figures')

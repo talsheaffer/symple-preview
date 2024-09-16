@@ -248,10 +248,14 @@ class SympleAgent(nn.Module):
         behavior_action_prob = behavior_probs[:,action]
         new_state, new_coord, reward, node_count_reduction, done = env.step(state, coord, action)
         
+        for entry in policy_history:
+            entry['reward'] = env.time_penalty - (env.compute_penalty_coefficient * entry['complexity'])
+            entry['coordinates'] = coord
+        
         step_history = {
             'action': action,
             'target_probability': target_action_prob if self.training else target_action_prob.item(),
-            'behavior_probability': behavior_action_prob.item(),
+            'behavior_probability': behavior_action_prob.detach() if self.training else behavior_action_prob.item(),
             'reward': reward,
             'node_count_reduction': node_count_reduction,
             'target_policy_history': policy_history,

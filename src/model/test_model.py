@@ -1,5 +1,4 @@
 import unittest
-import torch
 import sympy as sp
 
 from src.model.tree import ExprNode

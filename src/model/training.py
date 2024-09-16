@@ -89,11 +89,33 @@ def train_on_batch(
         env = Symple(**symple_kwargs)
         if behavior_policy:
             history, _ = agent(en, env, behavior_policy=behavior_policy)
-            rewards = [step['reward'] for step in history]
-            action_probs = [step['target_probability'] for step in history]
-            behavior_action_probs = [step['behavior_probability'] for step in history]
-            loss, total_return = compute_loss_off_policy(rewards, action_probs, behavior_action_probs)
+
+            # flatten the sequence
+            # unpack the rewards
+            
+            rewards = sum([
+                [internal_step['reward'] for internal_step in step['target_policy_history']]+
+                [step['reward']] for step in history
+            ], [])
+            target_action_probs = sum([
+                [internal_step['probability'] for internal_step in step['target_policy_history']]+
+                [step['target_probability']] for step in history
+            ], [])
+            # for internal / high-level actions we'll take the behavior policy probabilities to be the target policy, but block backprop
+            behavior_action_probs = sum([
+                [internal_step['probability'].detach() for internal_step in step['target_policy_history']]+
+                [step['behavior_probability']] for step in history
+            ], [])
+
+
+            loss, total_return = compute_loss_off_policy(rewards, target_action_probs, behavior_action_probs)
             loss = loss / len(expr_nodes)
+
+            for step in history:
+                for internal_step in step['target_policy_history']:
+                    for key, value in internal_step.items():
+                        if isinstance(value, torch.Tensor):
+                            internal_step[key] = value.item()
         else:
             history, _ = agent(en, env)
             rewards = [step['reward'] for step in history]
