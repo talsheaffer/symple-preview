@@ -222,9 +222,6 @@ class SympleAgent(nn.Module):
         if behavior_policy:
             return self.off_policy_forward(state, env, behavior_policy)
         
-        # Initialize global memory
-        h_glob = torch.zeros(self.lstm.num_layers, 1, self.global_hidden_size, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE)
-        c_glob = torch.zeros(self.lstm.num_layers, 1, self.global_hidden_size, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE)
         # Apply to all nodes in the tree
         state = self.apply_binary_lstm(state)
         
@@ -242,7 +239,8 @@ class SympleAgent(nn.Module):
                         behavior_policy: Callable[[ExprNode, tuple[int, ...], Symple], Union[torch.Tensor, List[float]]]
                         ) -> Tuple[ExprNode, tuple[int, ...], bool, Dict]:
         current_node = state.get_node(coord)
-        action_probs, policy_history = self.policy(current_node, env.get_validity_mask(current_node))
+        validity_mask = env.get_validity_mask(current_node)
+        target_probs, policy_history = self.policy(current_node, validity_mask)
         
         behavior_probs = behavior_policy(state, validity_mask)
         action = torch.multinomial(torch.tensor(behavior_probs), 1).item()
@@ -265,9 +263,6 @@ class SympleAgent(nn.Module):
     def off_policy_forward(self, state: ExprNode, env: Symple,
                            behavior_policy: Callable[[ExprNode, tuple[int, ...], Symple], Union[torch.Tensor, List[float]]]
                            ) -> Tuple[List[Dict], ExprNode]:
-        # Initialize global memory
-        h_glob = torch.zeros(self.lstm.num_layers, 1, self.global_hidden_size, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE)
-        c_glob = torch.zeros(self.lstm.num_layers, 1, self.global_hidden_size, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE)
         
         # Apply to all nodes in the tree
         state = self.apply_binary_lstm(state)

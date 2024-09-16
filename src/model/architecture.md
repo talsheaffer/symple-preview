@@ -104,6 +104,7 @@ The actions come in a few types:
     * Torch compile
 11. Policy gradient - add baseline
 12. Gather more extensive history of agent actions
+13. Remove linear redundancy from FFN
 
 
 # Questions
