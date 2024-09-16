@@ -75,12 +75,3 @@ plt.ylabel('Return')
 plt.legend()
 plt.savefig(os.path.join(figures_dir, 'return_moving_average.png'))
 plt.close()
-
-# New plot: Histogram of returns
-plt.figure(figsize=(10, 5))
-plt.hist(returns, bins=30, edgecolor='black')
-plt.title('Distribution of Returns')
-plt.xlabel('Return')
-plt.ylabel('Frequency')
-plt.savefig(os.path.join(figures_dir, 'return_distribution.png'))
-plt.close()

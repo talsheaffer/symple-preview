@@ -67,11 +67,12 @@ json_filename = os.path.join(training_data_dir, f"training_data_{timestamp}.json
 
 training_data = []
 
-for epoch in range(num_epochs):
+for epoch in range(1, num_epochs + 1):
     # Shuffle the dataset
     shuffled_data = df['expr'].sample(frac=1).reset_index(drop=True)
+    n_batches = len(shuffled_data) // batch_size
     
-    for i in range(0, batch_size * (len(shuffled_data) // batch_size), batch_size):
+    for i in range(0, batch_size * n_batches, batch_size):
         batch = shuffled_data[i:i+batch_size].apply(ExprNode.from_sympy).tolist()
         
         # Measure time for training on the batch
@@ -91,15 +92,17 @@ for epoch in range(num_epochs):
         returns.append(avg_return)
         avg_eval_time = batch_time / batch_size  # Calculate average evaluation time per expression
         eval_times.append(avg_eval_time)
+        avg_ncr = sum([sum([step['node_count_reduction'] for step in history]) for history in batch_history]) / len(batch_history)
         
-        batch_number = epoch * (len(shuffled_data) // batch_size) + (i // batch_size) + 1
-        print(f"Epoch {epoch + 1}/{num_epochs}, Batch {batch_number}, Return: {avg_return:.4f}, Batch Time: {batch_time:.4f} seconds, Avg Eval Time: {avg_eval_time:.4f} seconds")
+        batch_number = (i // batch_size) + 1
+        print(f"Epoch {epoch}/{num_epochs}, Batch {batch_number}/{n_batches}, Return: {avg_return:.4f}, NCR: {avg_ncr:.4f}, Batch Time: {batch_time:.4f} seconds, Avg Eval Time: {avg_eval_time:.4f} seconds")
 
         # Save batch data
         batch_data = {
-            'epoch': epoch + 1,
+            'epoch': epoch,
             'batch_number': batch_number,
             'avg_return': avg_return,
+            'avg_ncr': avg_ncr,
             'batch_time': batch_time,
             'avg_eval_time': avg_eval_time,
             'history': batch_history
