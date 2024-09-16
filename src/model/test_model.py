@@ -1,4 +1,5 @@
 import unittest
+
 import sympy as sp
 
 from src.model.tree import ExprNode
