@@ -1,5 +1,4 @@
 import time
-import sys
 import os
 
 import sympy as sp
@@ -15,12 +14,14 @@ from src.model.model import SympleAgent
 from src.model.training import train_on_batch
 from src.model.tree import ExprNode
 
-# from aux_policies import random_policy
-# behavior_policy = random_policy
+from definitions import ROOT_DIR
+
+from aux_policies import random_policy
+behavior_policy = random_policy
+# behavior_policy = None
 
 # Load the dataset
-from definitions import ROOT_DIR
-sys.setrecursionlimit(10000)  # Increase as needed
+
 
 # Apply from_sympy to df['expr']
 
@@ -78,7 +79,7 @@ for epoch in range(1, num_epochs + 1):
         # Measure time for training on the batch
         start_time = time.time()
         avg_return, batch_history = train_on_batch(agent, batch, optimizer,
-                                    # behavior_policy=behavior_policy,
+                                    behavior_policy=behavior_policy,
                                     **dict(
                                         time_penalty=0.02,
                                         min_steps=20,
