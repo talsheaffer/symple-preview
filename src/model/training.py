@@ -83,23 +83,36 @@ def train_on_batch(
     """
     agent.train()
     optimizer.zero_grad()
-
     avg_return = 0.0
+    batch_history = []
     for en in expr_nodes:
         env = Symple(**symple_kwargs)
         if behavior_policy:
-            rewards, action_probs, behavior_action_probs, _ = agent(en, env, behavior_policy=behavior_policy)
+            history, _ = agent(en, env, behavior_policy=behavior_policy)
+            rewards = [step['reward'] for step in history]
+            action_probs = [step['target_probability'] for step in history]
+            behavior_action_probs = [step['behavior_probability'] for step in history]
             loss, total_return = compute_loss_off_policy(rewards, action_probs, behavior_action_probs)
             loss = loss / len(expr_nodes)
         else:
-            rewards, action_log_probs, _ = agent(en, env)
+            history, _ = agent(en, env)
+            rewards = [step['reward'] for step in history]
+            action_log_probs = [step['probability'].log() for step in history]
             loss, total_return = compute_loss(rewards, action_log_probs)
             loss = loss / len(expr_nodes)
         
         loss.backward()
         avg_return += total_return / len(expr_nodes)
+        
+        # Convert tensors to items in history
+        for step in history:
+            for key, value in step.items():
+                if isinstance(value, torch.Tensor):
+                    step[key] = value.item()
+        
+        batch_history.append(history)
 
     # Perform optimization step
     optimizer.step()
 
-    return avg_return
+    return avg_return, batch_history

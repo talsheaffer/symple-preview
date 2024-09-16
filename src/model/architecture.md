@@ -88,7 +88,7 @@ The actions come in a few types:
 
 
 
-# Possible imporvements
+# To do
 
 1. global state information
 2. self attention
@@ -97,12 +97,13 @@ The actions come in a few types:
 5. Selection of nodes for special attention
 6. Modify LSTM - traditional LSTM might not be totally appropriate
 7. Include sympy operations (e.g. factor)
-8. replace embedding with one-hot
+8. ~~replace embedding with one-hot - done~~
 9. Separate data from structure
 10. Optimizations:
     * [TorchScript](https://medium.com/@hihuaweizhu/key-points-to-grasp-for-torchscript-beginners-c02cf94aaa50)
     * Torch compile
 11. Policy gradient - add baseline
+12. Gather more extensive history of agent actions
 
 
 # Questions

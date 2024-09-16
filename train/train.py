@@ -1,12 +1,13 @@
-
 import time
-import matplotlib.pyplot as plt
 import sys
-
+import os
 
 import sympy as sp
 
 import pandas as pd
+import json
+from datetime import datetime
+
 import torch
 
 # from src.model.environment import Symple
@@ -57,6 +58,15 @@ returns = []
 total_time = 0
 eval_times = []
 
+
+# Generate a unique filename for this training run
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+training_data_dir = os.path.join(ROOT_DIR, "train", "training_data")
+os.makedirs(training_data_dir, exist_ok=True)
+json_filename = os.path.join(training_data_dir, f"training_data_{timestamp}.json")
+
+training_data = []
+
 for epoch in range(num_epochs):
     # Shuffle the dataset
     shuffled_data = df['expr'].sample(frac=1).reset_index(drop=True)
@@ -66,7 +76,7 @@ for epoch in range(num_epochs):
         
         # Measure time for training on the batch
         start_time = time.time()
-        avg_return = train_on_batch(agent, batch, optimizer,
+        avg_return, batch_history = train_on_batch(agent, batch, optimizer,
                                     # behavior_policy=behavior_policy,
                                     **dict(
                                         time_penalty=0.02,
@@ -85,49 +95,23 @@ for epoch in range(num_epochs):
         batch_number = epoch * (len(shuffled_data) // batch_size) + (i // batch_size) + 1
         print(f"Epoch {epoch + 1}/{num_epochs}, Batch {batch_number}, Return: {avg_return:.4f}, Batch Time: {batch_time:.4f} seconds, Avg Eval Time: {avg_eval_time:.4f} seconds")
 
+        # Save batch data
+        batch_data = {
+            'epoch': epoch + 1,
+            'batch_number': batch_number,
+            'avg_return': avg_return,
+            'batch_time': batch_time,
+            'avg_eval_time': avg_eval_time,
+            'history': batch_history
+        }
+        training_data.append(batch_data)
+
+    # Save data after each epoch
+    with open(json_filename, 'w') as f:
+        json.dump(training_data, f, indent=2)
+
 avg_time_per_batch = total_time / (num_epochs * (len(df) // batch_size))
 print(f"Training completed. Average time per batch: {avg_time_per_batch:.4f} seconds")
-
-# Plot the return history
-plt.figure(figsize=(10, 5))
-plt.plot(range(1, len(returns) + 1), returns)
-plt.title('Return vs Batch Number')
-plt.xlabel('Batch Number')
-plt.ylabel('Return')
-plt.axhline(y=0, color='k', linestyle='-', linewidth=0.5)  # Add horizontal line at y=0
-plt.savefig(ROOT_DIR + '/train/return_history.png')
-
-# Plot the evaluation time history
-plt.figure(figsize=(10, 5))
-plt.plot(range(1, len(eval_times) + 1), eval_times)
-plt.title('Average Evaluation Time per Expression vs Batch Number')
-plt.xlabel('Batch Number')
-plt.ylabel('Average Evaluation Time (seconds)')
-plt.savefig(ROOT_DIR + '/train/eval_time_history.png')
+print(f"Training data saved to: {json_filename}")
 
 
-# Plot both return and evaluation time on the same graph
-plt.figure(figsize=(12, 6))
-
-# Plot return
-plt.plot(range(1, len(returns) + 1), returns, label='Return', color='blue')
-plt.ylabel('Return', color='blue')
-plt.tick_params(axis='y', labelcolor='blue')
-
-# Create a twin axis for evaluation time
-ax2 = plt.twinx()
-ax2.plot(range(1, len(eval_times) + 1), eval_times, label='Avg Eval Time', color='red')
-ax2.set_ylabel('Average Evaluation Time (seconds)', color='red')
-ax2.tick_params(axis='y', labelcolor='red')
-
-plt.title('Return and Average Evaluation Time vs Batch Number')
-plt.xlabel('Batch Number')
-
-# Add legend
-lines1, labels1 = plt.gca().get_legend_handles_labels()
-lines2, labels2 = ax2.get_legend_handles_labels()
-ax2.legend(lines1 + lines2, labels1 + labels2, loc='upper left')
-
-plt.axhline(y=0, color='k', linestyle='-', linewidth=0.5)  # Add horizontal line at y=0
-plt.tight_layout()  # Adjust layout to prevent clipping of labels
-plt.savefig(ROOT_DIR + '/train/return_and_eval_time_history.png')
