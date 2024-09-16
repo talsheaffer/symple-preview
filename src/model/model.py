@@ -38,28 +38,82 @@ class SympleAgent(nn.Module):
         self.num_internal_ops = num_internal_ops
 
         # nn modules
-        # self.lstm = BinaryTreeLSTM(self.vocab_size, self.hidden_size, num_layers=lstm_n_layers)
+        self.lstm = nn.LSTM(self.hidden_size, self.global_hidden_size, num_layers=lstm_n_layers, batch_first=True)
         self.blstm = NaryTreeLSTM(2, self.vocab_size, self.hidden_size)
         self.tlstm = NaryTreeLSTM(3, self.vocab_size, self.hidden_size)
         self.ffn = FFN(self.hidden_size, self.hidden_size, self.hidden_size, n_layers=ffn_n_layers)
 
         # Perceptrons for high-level and internal decisions
-        self.high_level_actor = nn.Linear(self.hidden_size, 2)
-        self.internal_actor = nn.Linear(self.hidden_size, self.num_internal_ops)
-        self.actor = nn.Linear(self.hidden_size, self.num_ops)
+        self.high_level_actor = nn.Linear(self.hidden_size + self.global_hidden_size, 2)
+        self.internal_actor = nn.Linear(self.hidden_size + self.global_hidden_size, self.num_internal_ops)
+        self.actor = nn.Linear(self.hidden_size + self.global_hidden_size, self.num_ops)
 
-        # internal ops and their compute complexity
-        self.internal_ops = {
-            0: (self.apply_ffn, lambda en: self.hidden_size**2 * self.ffn.n_layers), 
-        }
-        for i in range(self.num_internal_ops-1):
-            self.internal_ops[i+1] = (
-                lambda en: self.apply_ternary_lstm(en, depth = i), lambda en: 4 * self.hidden_size**2 * 3 * en.node_count(depth=i)
-            )
+        # internal ops and their compute complexity. Including certain compositions of elementary internal ops
+        self.ffn_complexity = self.hidden_size**2 * self.ffn.n_layers
+        self.glstm_complexity = 4 * (self.global_hidden_size * (self.hidden_size + self.global_hidden_size) * self.lstm.num_layers)
+        self.blstm_complexity = 4 * (self.hidden_size * (self.vocab_size + self.hidden_size) * 2) 
+        self.tlstm_complexity = 4 * (self.hidden_size * (self.vocab_size + self.hidden_size) * 3)
+       
+        self.internal_ops = [
+            (lambda en, h, c: (self.apply_ffn(en), h, c), lambda en: self.ffn_complexity),
+            (
+                lambda en, h, c: self.apply_global_lstm(self.apply_ffn(en), h, c),
+                lambda en: self.ffn_complexity + self.glstm_complexity
+            ),
+            (self.apply_global_lstm, lambda en: self.glstm_complexity)
+        ]
+        for i in range(self.num_internal_ops-3):
+            if i %2 == 0:
+                self.internal_ops.append(
+                    (
+                        lambda en, h, c: (self.apply_ternary_lstm(en, depth = i//2), h, c),
+                        lambda en: self.tlstm_complexity * en.node_count(depth=i//2)
+                    )
+                )
+            else:
+                self.internal_ops.append(
+                    (
+                        lambda en, h, c: self.apply_global_lstm(self.apply_ternary_lstm(en, depth = i//2), h, c),
+                        lambda en: self.tlstm_complexity * en.node_count(depth=i//2) + self.glstm_complexity
+                    )
+                )
         # auxiliary variables
         self.temperature = 3.0
         self.tz = torch.zeros((1, self.hidden_size), device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE)
 
+    def apply_internal_op(self, input: ExprNode, op_num: int, h_glob: torch.Tensor, c_glob: torch.Tensor) -> Tuple[ExprNode, float, torch.Tensor, torch.Tensor]:
+        """
+        Applies an internal operation to the input expression tree recursively.
+
+        Args:
+            input (ExprNode): The root node of the expression tree.
+            op_num (int): The number of the internal operation to apply.
+            h_glob (torch.Tensor): Global hidden state.
+            c_glob (torch.Tensor): Global cell state.
+        Returns:
+            Tuple[ExprNode, float, torch.Tensor, torch.Tensor]: The input node with updated hidden and cell states, and updated global states.
+            The float is the complexity of the operation.
+        """
+        op, complexity_func = self.internal_ops[op_num]
+        input, h_glob, c_glob = op(input, h_glob, c_glob)
+        complexity = complexity_func(input)
+        return input, complexity, h_glob, c_glob
+    
+    def apply_global_lstm(self, input: ExprNode, h_glob: torch.Tensor, c_glob: torch.Tensor) -> Tuple[ExprNode, torch.Tensor, torch.Tensor]:
+        """
+        Applies a global LSTM to the input expression tree recursively.
+
+        Args:
+            input (ExprNode): The root node of the expression tree.
+            h_glob (torch.Tensor): Global hidden state.
+            c_glob (torch.Tensor): Global cell state.
+
+        Returns:
+            Tuple[ExprNode, torch.Tensor, torch.Tensor]: The input node with updated hidden and cell states, and updated global states.
+        """
+        _, (h_glob, c_glob) = self.lstm(input.hidden.unsqueeze(0), (h_glob, c_glob))
+        return input, h_glob, c_glob
+    
     def apply_ffn(self, input: ExprNode) -> ExprNode:
         input.hidden = self.ffn(input.hidden)
         return input
@@ -128,11 +182,11 @@ class SympleAgent(nn.Module):
         return input
         
 
-    def policy(self, current_node: ExprNode, validity_mask: torch.Tensor, recursion_depth: int = 5):
+    def policy(self, current_node: ExprNode, validity_mask: torch.Tensor, h_glob: torch.Tensor, c_glob: torch.Tensor, recursion_depth: int = 5):
         history = []
 
         # Concatenate current node's hidden state with global hidden state
-        features = current_node.hidden
+        features = torch.cat([current_node.hidden, h_glob[-1]], dim=-1)
 
         # Decide whether to act or further process the expression
         if recursion_depth <= 0:
@@ -161,9 +215,8 @@ class SympleAgent(nn.Module):
             internal_action = torch.multinomial(internal_probs, 1).item()
             internal_action_prob = internal_probs[:,internal_action]
             
-            internal_op, complexity_func = self.internal_ops[internal_action]
-            current_node = internal_op(current_node)
-            complexity = complexity_func(current_node)
+
+            current_node, complexity, h_glob, c_glob = self.apply_internal_op(current_node, internal_action, h_glob, c_glob)
             
             history.append({
                 'action_type': 'internal',
@@ -173,20 +226,20 @@ class SympleAgent(nn.Module):
                 'node_count_reduction': 0.0
             })
             
-            action_probs, sub_history = self.policy(current_node, validity_mask, recursion_depth - 1)
+            action_probs, sub_history, h_glob, c_glob = self.policy(current_node, validity_mask, h_glob, c_glob, recursion_depth - 1)
             history.extend(sub_history)
-            return action_probs, history
+            return action_probs, history, h_glob, c_glob
         
         # Apply validity mask to actor weights
         valid_actor_weights = self.actor.weight * validity_mask.unsqueeze(1)
         valid_actor_bias = self.actor.bias * validity_mask
         logits = validity_mask.log() + F.linear(features, valid_actor_weights, valid_actor_bias)
         action_probs = F.softmax(logits / self.temperature, dim=-1)
-        return action_probs, history
+        return action_probs, history, h_glob, c_glob
 
-    def step(self, state: ExprNode, coord: tuple[int, ...], env: Symple):
+    def step(self, state: ExprNode, coord: tuple[int, ...], env: Symple, h_glob: torch.Tensor, c_glob: torch.Tensor):
         current_node = state.get_node(coord)
-        action_probs, history = self.policy(current_node, env.get_validity_mask(current_node))
+        action_probs, history, h_glob, c_glob = self.policy(current_node, env.get_validity_mask(current_node), h_glob, c_glob)
         action = torch.multinomial(action_probs, 1).item()
         action_prob = action_probs[:,action]
 
@@ -207,7 +260,7 @@ class SympleAgent(nn.Module):
             'coordinates': coord
         })
         
-        return new_state, new_coord, done, history
+        return new_state, new_coord, done, history, h_glob, c_glob
 
     def forward(self, state: ExprNode, env: Symple,
                 behavior_policy: Optional[
@@ -222,6 +275,9 @@ class SympleAgent(nn.Module):
         if behavior_policy:
             return self.off_policy_forward(state, env, behavior_policy)
         
+        # Initialize global memory
+        h_glob = torch.zeros(self.lstm.num_layers, 1, self.global_hidden_size, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE)
+        c_glob = torch.zeros(self.lstm.num_layers, 1, self.global_hidden_size, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE)
         # Apply to all nodes in the tree
         state = self.apply_binary_lstm(state)
         
@@ -230,17 +286,18 @@ class SympleAgent(nn.Module):
         history = []
 
         while not done:
-            state, coord, done, step_history = self.step(state, coord, env)
+            state, coord, done, step_history, h_glob, c_glob = self.step(state, coord, env, h_glob, c_glob)
             history.extend(step_history)
 
         return history, state.reset_tensors()
     
     def off_policy_step(self, state: ExprNode, coord: tuple[int, ...], env: Symple,
-                        behavior_policy: Callable[[ExprNode, tuple[int, ...], Symple], Union[torch.Tensor, List[float]]]
-                        ) -> Tuple[ExprNode, tuple[int, ...], bool, Dict]:
+                        behavior_policy: Callable[[ExprNode, tuple[int, ...], Symple], Union[torch.Tensor, List[float]]],
+                        h_glob: torch.Tensor, c_glob: torch.Tensor
+                        ) -> Tuple[ExprNode, tuple[int, ...], bool, Dict, torch.Tensor, torch.Tensor]:
         current_node = state.get_node(coord)
         validity_mask = env.get_validity_mask(current_node)
-        target_probs, policy_history = self.policy(current_node, validity_mask)
+        target_probs, policy_history, h_glob, c_glob = self.policy(current_node, validity_mask, h_glob, c_glob)
         
         behavior_probs = behavior_policy(state, validity_mask)
         action = torch.multinomial(torch.tensor(behavior_probs), 1).item()
@@ -262,11 +319,14 @@ class SympleAgent(nn.Module):
             'coordinates': coord
         }
         
-        return new_state, new_coord, done, step_history
+        return new_state, new_coord, done, step_history, h_glob, c_glob
     
     def off_policy_forward(self, state: ExprNode, env: Symple,
                            behavior_policy: Callable[[ExprNode, tuple[int, ...], Symple], Union[torch.Tensor, List[float]]]
                            ) -> Tuple[List[Dict], ExprNode]:
+        # Initialize global memory
+        h_glob = torch.zeros(self.lstm.num_layers, 1, self.global_hidden_size, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE)
+        c_glob = torch.zeros(self.lstm.num_layers, 1, self.global_hidden_size, device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE)
         
         # Apply to all nodes in the tree
         state = self.apply_binary_lstm(state)
@@ -275,7 +335,7 @@ class SympleAgent(nn.Module):
         history = []
         
         while not done:
-            state, coord, done, step_history = self.off_policy_step(state, coord, env, behavior_policy)
+            state, coord, done, step_history, h_glob, c_glob = self.off_policy_step(state, coord, env, behavior_policy, h_glob, c_glob)
             history.append(step_history)
         
         return history, state.reset_tensors()
