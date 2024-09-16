@@ -129,7 +129,7 @@ class Symple:
         done = action == OP_FINISH or self.max_steps == 0
         
 
-        return new_expr, new_coord, reward, done
+        return new_expr, new_coord, reward, node_count_reduction, done
 
     def get_validity_mask(self, expr: ExprNode, coord: tuple[int, ...] = ()) -> torch.Tensor:
         current_node = expr.get_node(coord)

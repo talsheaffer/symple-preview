@@ -9,7 +9,7 @@ from src.model.nary_tree_lstm import NaryTreeLSTM
 
 from src.model.model_default import DEFAULT_DEVICE, DEFAULT_DTYPE
 
-from typing import Callable, Union, List, Tuple, Optional
+from typing import Callable, Union, List, Tuple, Optional, Dict
 
 from numpy import inf
 
@@ -128,58 +128,82 @@ class SympleAgent(nn.Module):
         
 
     def policy(self, current_node: ExprNode, validity_mask: torch.Tensor, recursion_depth: int = 5):
-        # Initialize a list to store probabilities, only if training
-        probs = [] if self.training else None
-        complexities = [] if self.training else None
+        history = []
 
         # Decide whether to act or further process the expression
         if recursion_depth <= 0:
             high_level_probs = torch.tensor([[0, 1]], device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE)
             high_level_action = 1
+            high_level_action_prob = high_level_probs[:,high_level_action]
         else:
             high_level_logits = self.high_level_actor(current_node.hidden)
             high_level_probs = F.softmax(high_level_logits/self.temperature, dim=-1)
             high_level_action = torch.multinomial(high_level_probs, 1).item()
+            high_level_action_prob = high_level_probs[:,high_level_action]
         
-        # Add probability of high-level action if training
-        if self.training:
-            probs.append(high_level_probs[:,high_level_action])
-            complexities.append(0.0)
+        # Add high-level action to history
+        history.append({
+            'action_type': 'high_level',
+            'action': high_level_action,
+            'probability': high_level_action_prob if self.training else high_level_action_prob.item(),
+            'complexity': 0.0,
+            'node_count_reduction': 0.0
+        })
 
         if high_level_action == 0:
             # Internal op
             internal_logits = self.internal_actor(current_node.hidden)
             internal_probs = F.softmax(internal_logits/self.temperature, dim=-1)
             internal_action = torch.multinomial(internal_probs, 1).item()
+            internal_action_prob = internal_probs[:,internal_action]
             
             internal_op, complexity_func = self.internal_ops[internal_action]
             current_node = internal_op(current_node)
-            action_probs, sub_probs, sub_complexities = self.policy(current_node, validity_mask, recursion_depth - 1)
-            if self.training:
-                probs.append(internal_probs[:,internal_action])
-                complexities.append(complexity_func(current_node))
-                probs.extend(sub_probs)
-                complexities.extend(sub_complexities)
-            return action_probs, probs, complexities
+            complexity = complexity_func(current_node)
+            
+            history.append({
+                'action_type': 'internal',
+                'action': internal_action,
+                'probability': internal_action_prob if self.training else internal_action_prob.item(),
+                'complexity': complexity,
+                'node_count_reduction': 0.0
+            })
+            
+            action_probs, sub_history = self.policy(current_node, validity_mask, recursion_depth - 1)
+            history.extend(sub_history)
+            return action_probs, history
         
         # Apply validity mask to actor weights
         valid_actor_weights = self.actor.weight * validity_mask.unsqueeze(1)
         valid_actor_bias = self.actor.bias * validity_mask
         logits = validity_mask.log() + F.linear(current_node.hidden, valid_actor_weights, valid_actor_bias)
         action_probs = F.softmax(logits / self.temperature, dim=-1)
-        return action_probs, probs, complexities
+        return action_probs, history
 
     def step(self, state: ExprNode, coord: tuple[int, ...], env: Symple):
         current_node = state.get_node(coord)
-        action_probs, probs, complexities = self.policy(current_node, env.get_validity_mask(current_node))
-        if self.training:
-            rewards = [env.time_penalty - env.compute_penalty_coefficient * c for c in complexities]
+        action_probs, history = self.policy(current_node, env.get_validity_mask(current_node))
         action = torch.multinomial(action_probs, 1).item()
-        new_state, new_coord, reward, done = env.step(state, coord, action)
-        if self.training:
-            probs.append(action_probs[:,action])
-            rewards.append(reward)
-        return new_state, new_coord, rewards, done, probs
+        action_prob = action_probs[:,action]
+
+        new_state, new_coord, reward, node_count_reduction, done = env.step(state, coord, action)
+        
+        # Add reward and coordinates to internal and high-level action history
+        for entry in history:
+            entry['reward'] = env.time_penalty - (env.compute_penalty_coefficient * entry['complexity'])
+            entry['coordinates'] = coord
+        
+        history.append({
+            'action_type': 'external',
+            'action': action,
+            'probability': action_prob if self.training else action_prob.item(),
+            'complexity': 0.0,
+            'node_count_reduction': node_count_reduction, 
+            'reward': reward,
+            'coordinates': coord
+        })
+        
+        return new_state, new_coord, done, history
 
     def forward(self, state: ExprNode, env: Symple,
                 behavior_policy: Optional[
@@ -188,8 +212,7 @@ class SympleAgent(nn.Module):
                     ]
                 ] = None
                 ) -> Union[
-                    Tuple[List[float], List[torch.Tensor], ExprNode],
-                    Tuple[List[float], List[torch.Tensor], List[torch.Tensor], ExprNode],
+                    Tuple[List[Dict], ExprNode],
                     ExprNode
                 ]:
         if behavior_policy:
@@ -199,48 +222,49 @@ class SympleAgent(nn.Module):
         state = self.apply_binary_lstm(state)
         coord = ()
         done = False
-        if self.training:
-            rewards = []
-            action_log_probs = []
+        history = []
 
         while not done:
-            state, coord, new_rewards, done, probs = self.step(state, coord, env)
-            if self.training:
-                rewards.extend(new_rewards)
-                action_log_probs.extend(p.log() for p in probs)
-        if self.training:
-            return rewards, action_log_probs, state
-        else:
-            return state
+            state, coord, done, step_history = self.step(state, coord, env)
+            history.extend(step_history)
+
+        return history, state
     
     def off_policy_step(self, state: ExprNode, coord: tuple[int, ...], env: Symple,
                         behavior_policy: Callable[[ExprNode, tuple[int, ...], Symple], Union[torch.Tensor, List[float]]]
-                        ) -> Tuple[ExprNode, tuple[int, ...], float, bool, float, float]:
+                        ) -> Tuple[ExprNode, tuple[int, ...], bool, Dict]:
         current_node = state.get_node(coord)
-        action_probs, _, _ = self.policy(current_node, env.get_validity_mask(current_node)) # ignore n_internal_actions and accumulated_prob - perhaps change this later
+        action_probs, policy_history = self.policy(current_node, env.get_validity_mask(current_node))
+        
         behavior_probs = behavior_policy(state, coord, env)
         action = torch.multinomial(torch.tensor(behavior_probs), 1).item()
-        new_state, new_coord, reward, done = env.step(state, coord, action)
-        return new_state, new_coord, reward, done, action_probs[:,action], behavior_probs[:,action]
+        target_action_prob = behavior_probs[action]
+        behavior_action_prob = behavior_probs[:,action]
+        new_state, new_coord, reward, node_count_reduction, done = env.step(state, coord, action)
+        
+        step_history = {
+            'action': action,
+            'target_probability': target_action_prob if self.training else target_action_prob.item(),
+            'behavior_probability': behavior_action_prob.item(),
+            'reward': reward,
+            'node_count_reduction': node_count_reduction,
+            'target_policy_history': policy_history,
+            'coordinates': coord
+        }
+        
+        return new_state, new_coord, done, step_history
     
     def off_policy_forward(self, state: ExprNode, env: Symple,
                            behavior_policy: Callable[[ExprNode, tuple[int, ...], Symple], Union[torch.Tensor, List[float]]]
-                           ) -> Union[Tuple[List[float], List[torch.scalar_tensor], List[torch.scalar_tensor], ExprNode], ExprNode]:
+                           ) -> Tuple[List[Dict], ExprNode]:
         # Apply to all nodes in the tree
         state = self.lstm(state)
         done = False
         coord = ()
-        if self.training:
-            rewards = []
-            action_probs = []
-            behavior_action_probs = []
+        history = []
+        
         while not done:
-            state, coord, reward, done, action_prob, behavior_action_prob = self.off_policy_step(state, coord, env, behavior_policy)
-            if self.training:
-                rewards.append(reward)
-                action_probs.append(action_prob)
-                behavior_action_probs.append(behavior_action_prob)
-        if self.training:
-            return rewards, action_probs, behavior_action_probs, state
-        else:
-            return state
+            state, coord, done, step_history = self.off_policy_step(state, coord, env, behavior_policy)
+            history.append(step_history)
+        
+        return history, state
