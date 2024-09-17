@@ -78,7 +78,7 @@ for epoch in range(1, num_epochs + 1):
         
         # Measure time for training on the batch
         start_time = time.time()
-        avg_return, batch_history = train_on_batch(agent, batch, optimizer,
+        avg_return, batch_history, output_expr_nodes = train_on_batch(agent, batch, optimizer,
                                     behavior_policy=behavior_policy,
                                     **dict(
                                         time_penalty=0.02,
@@ -98,6 +98,18 @@ for epoch in range(1, num_epochs + 1):
         batch_number = (i // batch_size) + 1
         print(f"Epoch {epoch}/{num_epochs}, Batch {batch_number}/{n_batches}, Return: {avg_return:.4f}, NCR: {avg_ncr:.4f}, Batch Time: {batch_time:.4f} seconds, Avg Eval Time: {avg_eval_time:.4f} seconds")
 
+        # Compute and verify node count reduction
+        for input_expr, output_expr, history in zip(batch, output_expr_nodes, batch_history):
+            input_node_count = input_expr.node_count()
+            output_node_count = output_expr.node_count()
+            computed_ncr = input_node_count - output_node_count
+            history_ncr = sum([step['node_count_reduction'] for step in history])
+            
+            if computed_ncr != history_ncr:
+                print(f"Warning: Computed NCR ({computed_ncr}) doesn't match history NCR ({history_ncr})")
+                print(f"Input expression: {input_expr}")
+                print(f"Output expression: {output_expr}")
+
         # Save batch data
         batch_data = {
             'epoch': epoch,
@@ -106,7 +118,10 @@ for epoch in range(1, num_epochs + 1):
             'avg_ncr': avg_ncr,
             'batch_time': batch_time,
             'avg_eval_time': avg_eval_time,
-            'history': batch_history
+            'history': batch_history,
+            'input_expressions': [str(expr) for expr in batch],
+            'output_expressions': [str(expr) for expr in output_expr_nodes],
+            'node_count_reductions': [input_expr.node_count() - output_expr.node_count() for input_expr, output_expr in zip(batch, output_expr_nodes)]
         }
         training_data.append(batch_data)
 
@@ -117,5 +132,4 @@ for epoch in range(1, num_epochs + 1):
 avg_time_per_batch = total_time / (num_epochs * (len(df) // batch_size))
 print(f"Training completed. Average time per batch: {avg_time_per_batch:.4f} seconds")
 print(f"Training data saved to: {json_filename}")
-
 

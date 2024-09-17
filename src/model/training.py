@@ -67,7 +67,7 @@ def train_on_batch(
         agent: SympleAgent, expr_nodes: List[ExprNode], optimizer: torch.optim.Optimizer,
         behavior_policy: Optional[Callable[[ExprNode, tuple[int, ...], Symple], Union[torch.Tensor, List[float]]]] = None,
         **symple_kwargs: Dict[str, Any]
-) -> float:
+) -> Tuple[float, List[Dict], List[ExprNode]]:
     """
     Train the agent on a batch of ExprNodes.
 
@@ -80,15 +80,19 @@ def train_on_batch(
 
     Returns:
     float: The average return for this batch.
+    List[Dict]: The batch history.
+    List[ExprNode]: The output ExprNodes from agent.forward.
     """
     agent.train()
     optimizer.zero_grad()
     avg_return = 0.0
     batch_history = []
+    output_expr_nodes = []
     for en in expr_nodes:
         env = Symple(**symple_kwargs)
         if behavior_policy:
-            history, _ = agent(en, env, behavior_policy=behavior_policy)
+            history, output_en = agent(en, env, behavior_policy=behavior_policy)
+            output_expr_nodes.append(output_en)
 
             # flatten the sequence
             # unpack the rewards
@@ -117,7 +121,8 @@ def train_on_batch(
                         if isinstance(value, torch.Tensor):
                             internal_step[key] = value.item()
         else:
-            history, _ = agent(en, env)
+            history, output_en = agent(en, env)
+            output_expr_nodes.append(output_en)
             rewards = [step['reward'] for step in history]
             action_log_probs = [step['probability'].log() for step in history]
             loss, total_return = compute_loss(rewards, action_log_probs)
@@ -137,4 +142,4 @@ def train_on_batch(
     # Perform optimization step
     optimizer.step()
 
-    return avg_return, batch_history
+    return avg_return, batch_history, output_expr_nodes
