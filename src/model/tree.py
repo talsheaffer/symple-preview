@@ -119,6 +119,15 @@ class ExprNode(object):
             [(1,) + tup for tup in self.b.get_coords()] if self.b is not None else []
         )
 
+    def reset_tensors(self)->"ExprNode":
+        self.hidden = None
+        self.cell = None
+        if self.a is not None:
+            self.a.reset_tensors()
+        if self.b is not None:
+            self.b.reset_tensors()
+        return self
+
     @property
     def arg_hot(self):
         return self.arg * torch.nn.functional.one_hot(torch.tensor([self.type]), num_classes=VOCAB_SIZE).to(DEFAULT_DEVICE, DEFAULT_DTYPE)

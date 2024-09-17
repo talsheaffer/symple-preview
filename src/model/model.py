@@ -233,7 +233,7 @@ class SympleAgent(nn.Module):
             state, coord, done, step_history = self.step(state, coord, env)
             history.extend(step_history)
 
-        return history, state
+        return history, state.reset_tensors()
     
     def off_policy_step(self, state: ExprNode, coord: tuple[int, ...], env: Symple,
                         behavior_policy: Callable[[ExprNode, tuple[int, ...], Symple], Union[torch.Tensor, List[float]]]
@@ -278,4 +278,4 @@ class SympleAgent(nn.Module):
             state, coord, done, step_history = self.off_policy_step(state, coord, env, behavior_policy)
             history.append(step_history)
         
-        return history, state
+        return history, state.reset_tensors()
