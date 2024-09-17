@@ -10,7 +10,7 @@ json_files = [f for f in os.listdir(json_dir) if f.startswith('training_data_') 
 latest_json = max(json_files, key=lambda x: datetime.strptime(x, 'training_data_%Y%m%d_%H%M%S.json'))
 
 # Load the JSON data
-with open(os.path.join(json_dir, latest_json), 'r') as f:
+with open(os.path.join(json_dir, "/Users/talsheaffer/My Drive/code/ml/sympy_simp/symple/train/training_data/training_data_20240916_180411.json"), 'r') as f:
     data = json.load(f)
 
 # Extract necessary data
