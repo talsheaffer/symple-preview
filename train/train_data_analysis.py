@@ -5,6 +5,8 @@ import numpy as np
 from datetime import datetime
 from definitions import ROOT_DIR
 
+from src.model.environment import TIME_PENALTY, NODE_COUNT_IMPORTANCE_FACTOR, COMPUTE_PENALTY_COEFFICIENT
+
 # Find the most recent JSON file
 json_dir = os.path.join(ROOT_DIR, 'train/training_data')
 json_files = [f for f in os.listdir(json_dir) if f.startswith('training_data_') and f.endswith('.json')]
