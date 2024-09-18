@@ -5,10 +5,18 @@ import numpy as np
 from datetime import datetime
 from definitions import ROOT_DIR
 
+from src.model.environment import TIME_PENALTY, NODE_COUNT_IMPORTANCE_FACTOR, COMPUTE_PENALTY_COEFFICIENT
+
 # Find the most recent JSON file
 json_dir = os.path.join(ROOT_DIR, 'train/training_data')
 json_files = [f for f in os.listdir(json_dir) if f.startswith('training_data_') and f.endswith('.json')]
 latest_json = max(json_files, key=lambda x: datetime.strptime(x, 'training_data_%Y%m%d_%H%M%S.json'))
+
+# Parse the latest JSON filename to get the date and time
+date_time_str = latest_json.split('_', 2)[2].rsplit('.', 1)[0]
+parsed_date_time = datetime.strptime(date_time_str, '%Y%m%d_%H%M%S')
+formatted_date_time = parsed_date_time.strftime('%Y-%m-%d %H:%M:%S')
+print(f'Using training data from: {formatted_date_time}')
 
 # Load the JSON data
 with open(os.path.join(json_dir, latest_json), 'r') as f:
@@ -105,3 +113,61 @@ plt.close()
 
 print(f"Mean Node Count Reduction: {mean_ncr:.2f}")
 print(f"Standard Deviation of Node Count Reduction: {std_ncr:.2f}")
+
+
+
+# Extract rewards, node count reductions, and compute penalties
+rewards = [time_step['reward'] for batch in data for hist in batch['history'] for time_step in hist]
+ncrs = [time_step['node_count_reduction'] for batch in data for hist in batch['history'] for time_step in hist]
+compute_penalties = [time_step['complexity'] for batch in data for hist in batch['history'] for time_step in hist]
+actions = [ (time_step['action_type'], time_step['action']) for batch in data for hist in batch['history'] for time_step in hist]
+
+# Extract time penalty from the first batch (assuming it's constant across all batches)
+time_penalty = TIME_PENALTY
+
+# Calculate expected rewards
+expected_rewards = [time_penalty - COMPUTE_PENALTY_COEFFICIENT * cp + NODE_COUNT_IMPORTANCE_FACTOR * ncr for cp, ncr in zip(compute_penalties, ncrs)]
+
+# Compare expected rewards with actual rewards
+differences = [abs(r - er) for r, er in zip(rewards, expected_rewards)]
+max_difference = max(differences)
+avg_difference = sum(differences) / len(differences)
+
+print(f"Maximum difference between expected and actual rewards: {max_difference:.6f}")
+print(f"Average difference between expected and actual rewards: {avg_difference:.6f}")
+
+
+# Create a dictionary to store differences for each action type
+action_differences = {}
+
+# Iterate through actions, actual rewards, and expected rewards
+for action, reward, expected_reward in zip(actions, rewards, expected_rewards):
+    difference = abs(reward - expected_reward)
+    if difference !=0:
+    
+        # If the action is not in the dictionary, add it
+        if action not in action_differences:
+            action_differences[action] = []
+        
+        # Append the difference for this action
+        action_differences[action].append(difference)
+
+# Calculate average difference for each action
+avg_differences = {action: sum(diffs) / len(diffs) for action, diffs in action_differences.items()}
+
+num_discrepancies = {action: len(diffs) for action, diffs in action_differences.items()}
+
+print(f"Number of discrepancies for each action: {num_discrepancies}")
+
+# Sort actions by average difference in descending order
+sorted_actions = sorted(avg_differences.items(), key=lambda x: x[1], reverse=True)
+
+# Print the results
+print("\nAverage difference between expected and actual rewards for each action:")
+for action, avg_diff in sorted_actions:
+    print(f"Action: {action}, Average Difference: {avg_diff:.6f}")
+
+# Plot the top 10 actions with the highest average differences
+top_10_actions = sorted_actions[:10]
+action_names = [f"{action[0]}: {action[1]}" for action, _ in top_10_actions]
+avg_diffs = [avg_diff for _, avg_diff in top_10_actions]
