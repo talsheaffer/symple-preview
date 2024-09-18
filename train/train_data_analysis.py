@@ -124,7 +124,7 @@ actions = [ (time_step['action_type'], time_step['action']) for batch in data fo
 time_penalty = -0.02
 
 # Calculate expected rewards
-expected_rewards = [time_penalty - 1e-7 * cp + ncr for cp, ncr in zip(compute_penalties, ncrs)]
+expected_rewards = [time_penalty - 1e-8 * cp + ncr for cp, ncr in zip(compute_penalties, ncrs)]
 
 # Compare expected rewards with actual rewards
 differences = [abs(r - er) for r, er in zip(rewards, expected_rewards)]

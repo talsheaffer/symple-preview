@@ -111,7 +111,7 @@ class Symple:
         self,
         time_penalty: float = -0.02,
         node_count_importance_factor: float = 1.0,
-        compute_penalty_coefficient: float = 1e-7,
+        compute_penalty_coefficient: float = 1e-8,
         min_steps: int = 0,
         max_steps: int = 1000,
     ):
