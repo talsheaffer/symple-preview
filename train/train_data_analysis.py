@@ -1,6 +1,7 @@
 import os
 import json
 import matplotlib.pyplot as plt
+import numpy as np
 from datetime import datetime
 from definitions import ROOT_DIR
 
@@ -10,7 +11,7 @@ json_files = [f for f in os.listdir(json_dir) if f.startswith('training_data_') 
 latest_json = max(json_files, key=lambda x: datetime.strptime(x, 'training_data_%Y%m%d_%H%M%S.json'))
 
 # Load the JSON data
-with open(os.path.join(json_dir, "/Users/talsheaffer/My Drive/code/ml/sympy_simp/symple/train/training_data/training_data_20240916_180411.json"), 'r') as f:
+with open(os.path.join(json_dir, latest_json), 'r') as f:
     data = json.load(f)
 
 # Extract necessary data
@@ -81,3 +82,26 @@ plt.ylabel('Return')
 plt.legend()
 plt.savefig(os.path.join(figures_dir, 'return_moving_average.png'))
 plt.close()
+
+
+
+# Calculate true mean node count reduction
+true_ncr = [batch['node_count_reductions'] for batch in data]
+true_ncr = [item for sublist in true_ncr for item in sublist]  # Flatten the list
+
+mean_ncr = np.mean(true_ncr)
+std_ncr = np.std(true_ncr)
+
+# Plot histogram of true node count reduction
+plt.figure(figsize=(10, 5))
+plt.hist(true_ncr, bins=50, edgecolor='black')
+plt.title('Distribution of True Node Count Reduction')
+plt.xlabel('Node Count Reduction')
+plt.ylabel('Frequency')
+plt.axvline(mean_ncr, color='r', linestyle='dashed', linewidth=2, label=f'Mean: {mean_ncr:.2f}\nStd: {std_ncr:.2f}')
+plt.legend()
+plt.savefig(os.path.join(figures_dir, 'true_ncr_distribution.png'))
+plt.close()
+
+print(f"Mean Node Count Reduction: {mean_ncr:.2f}")
+print(f"Standard Deviation of Node Count Reduction: {std_ncr:.2f}")

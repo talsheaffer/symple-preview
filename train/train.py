@@ -17,8 +17,8 @@ from src.model.tree import ExprNode
 from definitions import ROOT_DIR
 
 from aux_policies import random_policy
-behavior_policy = random_policy
-# behavior_policy = None
+# behavior_policy = random_policy
+behavior_policy = None
 
 # Load the dataset
 
@@ -107,8 +107,8 @@ for epoch in range(1, num_epochs + 1):
             
             if computed_ncr != history_ncr:
                 print(f"Warning: Computed NCR ({computed_ncr}) doesn't match history NCR ({history_ncr})")
-                print(f"Input expression: {input_expr}")
-                print(f"Output expression: {output_expr}")
+                # print(f"Input expression: {input_expr}")
+                # print(f"Output expression: {output_expr}")
 
         # Save batch data
         batch_data = {
@@ -133,3 +133,10 @@ avg_time_per_batch = total_time / (num_epochs * (len(df) // batch_size))
 print(f"Training completed. Average time per batch: {avg_time_per_batch:.4f} seconds")
 print(f"Training data saved to: {json_filename}")
 
+# Save the model state dict
+model_save_dir = os.path.join(ROOT_DIR, 'train', 'models')
+os.makedirs(model_save_dir, exist_ok=True)
+model_filename = f'model_{timestamp}.pth'
+model_path = os.path.join(model_save_dir, model_filename)
+torch.save(agent.state_dict(), model_path)
+print(f"Model state dict saved to: {model_path}")

@@ -2,6 +2,8 @@ import sympy as sp
 import torch
 from numpy import inf
 
+
+
 from src.model.model_default import DEFAULT_DEVICE, DEFAULT_DTYPE
 from src.utils import iota
 
@@ -147,25 +149,25 @@ class ExprNode(object):
     @classmethod
     def from_sympy(cls, expr: sp.Expr, **kwargs) -> "ExprNode":
         if isinstance(expr, sp.Add):
-            type, arg = ADD_TYPE, ARG_NULL
+            _type, _arg = ADD_TYPE, ARG_NULL
         elif isinstance(expr, sp.Mul):
-            type, arg = MUL_TYPE, ARG_NULL
+            _type, _arg = MUL_TYPE, ARG_NULL
         elif isinstance(expr, sp.Pow):
-            type, arg = POW_TYPE, ARG_NULL
+            _type, _arg = POW_TYPE, ARG_NULL
         elif isinstance(expr, sp.Rational):
             if isinstance(expr, sp.Integer):
                 if expr == 0:
-                    type, arg = INT_ZERO_TYPE, ARG_NULL
+                    _type, _arg = INT_ZERO_TYPE, ARG_NULL
                 elif expr > 0:
-                    type, arg = INT_PO_TYPE, int(expr)
+                    _type, _arg = INT_PO_TYPE, int(expr)
                 else:
-                    type, arg = INT_NE_TYPE, abs(int(expr))
+                    _type, _arg = INT_NE_TYPE, abs(int(expr))
             else:
-                type, arg = DIV_TYPE, ARG_NULL
+                _type, _arg = DIV_TYPE, ARG_NULL
         elif isinstance(expr, sp.Symbol) and expr.name in SYMPY_SYMBOL_MAP:
-            type, arg = SYMPY_SYMBOL_MAP[expr.name], ARG_NULL
+            _type, _arg = SYMPY_SYMBOL_MAP[expr.name], ARG_NULL
         elif type(expr) in SYMPY_TO_TYPE_MAP:
-            type, arg = SYMPY_TO_TYPE_MAP[type(expr)], ARG_NULL
+            _type, _arg = SYMPY_TO_TYPE_MAP[type(expr)], ARG_NULL
         else:
             raise NotImplementedError(f"Unsupported expression type {type(expr)}")
 
@@ -182,14 +184,37 @@ class ExprNode(object):
                 b = cls.from_sympy(sp.sympify(expr.q))
 
         en = ExprNode(
-            type=type,
-            arg=arg,
+            type=_type,
+            arg=_arg,
             a=a,
             b=b,
             **kwargs
         )
         return en
 
+    def to_sympy(self)->sp.Expr:
+        if self.type == ADD_TYPE:
+            return sp.Add(self.a.to_sympy(), self.b.to_sympy())
+        elif self.type == SUB_TYPE:
+            return self.a.to_sympy() - self.b.to_sympy()
+        elif self.type == MUL_TYPE:
+            return sp.Mul(self.a.to_sympy(), self.b.to_sympy())
+        elif self.type == DIV_TYPE:
+            return sp.Mul(self.a.to_sympy(), sp.Pow(self.b.to_sympy(), -1))
+        elif self.type == POW_TYPE:
+            return sp.Pow(self.a.to_sympy(), self.b.to_sympy())
+        elif self.type == INT_NE_TYPE:
+            return -sp.sympify(self.arg)
+        elif self.type == INT_PO_TYPE:
+            return sp.sympify(self.arg)
+        elif self.type == INT_ZERO_TYPE:
+            return sp.sympify(0)
+        elif self.type == INF_TYPE:
+            return sp.zoo
+        elif self.type in [X_TYPE, Y_TYPE, Z_TYPE]:
+            return sp.Symbol(next(key for key, value in SYMPY_SYMBOL_MAP.items() if value == self.type))
+        else:
+            raise ValueError(f"Invalid expression type {self.type}")
     @classmethod
     def from_ExprNode(cls, en: "ExprNode")->"ExprNode":
         return ExprNode(
@@ -322,16 +347,16 @@ class ExprNode(object):
                 arg=ARG_NULL,
                 a=self.a,
                 b=self.b.a,
-                hidden = self.b.a.hidden.clone() if self.b.a is not None else None,
-                cell = self.b.a.cell.clone() if self.b.a is not None else None,
+                hidden = self.b.a.hidden.clone() if self.b.a.hidden is not None else None,
+                cell = self.b.a.cell.clone() if self.b.a.cell is not None else None,
             ),
             b=ExprNode(
                 type=self.type,
                 arg=ARG_NULL,
                 a=ExprNode.from_ExprNode(self.a), # Duplicate self.a
                 b=self.b.b,
-                hidden = self.b.b.hidden.clone() if self.b.b is not None else None,
-                cell = self.b.b.cell.clone() if self.b.b is not None else None,
+                hidden = self.b.b.hidden.clone() if self.b.b.hidden is not None else None,
+                cell = self.b.b.cell.clone() if self.b.b.cell is not None else None,
             ),
             p = self.p,
             hidden=self.hidden.clone() if self.hidden is not None else None,
