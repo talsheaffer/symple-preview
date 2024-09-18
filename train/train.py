@@ -156,3 +156,10 @@ avg_time_per_batch = total_time / (num_epochs * (len(df) // batch_size))
 print(f"Training completed. Average time per batch: {avg_time_per_batch:.4f} seconds")
 print(f"Training data saved to: {json_filename}")
 
+# Save the model state dict
+model_save_dir = os.path.join(ROOT_DIR, 'train', 'models')
+os.makedirs(model_save_dir, exist_ok=True)
+model_filename = f'model_{timestamp}.pth'
+model_path = os.path.join(model_save_dir, model_filename)
+torch.save(agent.state_dict(), model_path)
+print(f"Model state dict saved to: {model_path}")
