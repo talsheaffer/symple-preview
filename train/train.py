@@ -62,7 +62,7 @@ agent = SympleAgent(
 optimizer = torch.optim.Adam(agent.parameters(), lr=0.001)
 
 # Training loop
-num_epochs = 10
+num_epochs = 2
 batch_size = 32
 
 
@@ -89,7 +89,7 @@ for epoch in range(1, num_epochs + 1):
         avg_return, batch_history, output_expr_nodes = train_on_batch(agent, batch, optimizer,
                                     behavior_policy=behavior_policy,
                                     **dict(
-                                        time_penalty=0.02,
+                                        # time_penalty=-0.02,
                                         min_steps=30,
                                     )
                                 )
@@ -107,14 +107,16 @@ for epoch in range(1, num_epochs + 1):
         print(f"Epoch {epoch}/{num_epochs}, Batch {batch_number}/{n_batches}, Return: {avg_return:.4f}, NCR: {avg_ncr:.4f}, Batch Time: {batch_time:.4f} seconds, Avg Eval Time: {avg_eval_time:.4f} seconds")
 
         # Compute and verify node count reduction
-        for input_expr, output_expr, history in zip(batch, output_expr_nodes, batch_history):
+        for input_expr, output_expr, history in zip(
+            shuffled_data[i:i+batch_size].apply(ExprNode.from_sympy).tolist(), output_expr_nodes, batch_history
+        ):
             input_node_count = input_expr.node_count()
             output_node_count = output_expr.node_count()
             computed_ncr = input_node_count - output_node_count
             history_ncr = sum([step['node_count_reduction'] for step in history])
             
-            # if computed_ncr != history_ncr:
-            #     print(f"Warning: Computed NCR ({computed_ncr}) doesn't match history NCR ({history_ncr})")
+            assert computed_ncr == history_ncr, f"Warning: Computed NCR ({computed_ncr}) doesn't match history NCR ({history_ncr})"
+                # print(f"Warning: Computed NCR ({computed_ncr}) doesn't match history NCR ({history_ncr})")
                 # print(f"Input expression: {input_expr}")
                 # print(f"Output expression: {output_expr}")
 

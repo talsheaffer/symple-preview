@@ -34,24 +34,31 @@ OPS_MAP.append(op_finish)
 
 OP_MOVE_UP = next(it)
 def op_move_up(expr: ExprNode, coord: tuple[int, ...]) -> Tuple[ExprNode, tuple[int, ...], int]:
-    new_coord = coord[:-1] if coord else coord
-    return expr, new_coord, 0
+    if coord:
+        new_coord = coord[:-1]
+        return expr, new_coord, 0
+    else:
+        raise ValueError("Can't move up from root")
 OPS_MAP.append(op_move_up)
 
 OP_MOVE_LEFT = next(it)    
 def op_move_left(expr: ExprNode, coord: tuple[int, ...]) -> Tuple[ExprNode, tuple[int, ...], int]:
     new_coord = coord + (0,)
+    if expr.get_node(new_coord) is None:
+        raise ValueError("Can't move left from leaf")
     return expr, new_coord, 0
 OPS_MAP.append(op_move_left)
 
 OP_MOVE_RIGHT = next(it)
 def op_move_right(expr: ExprNode, coord: tuple[int, ...]) -> Tuple[ExprNode, tuple[int, ...], int]:
     new_coord = coord + (1,)
+    if expr.get_node(new_coord) is None:
+        raise ValueError("Can't move right from leaf")
     return expr, new_coord, 0
 OPS_MAP.append(op_move_right)
 
 OP_COMMUTE = next(it)
-@apply_op_and_count
+@apply_op_for_no_change
 def op_commute(expr: ExprNode) -> ExprNode:
     return expr.commute()
 OPS_MAP.append(op_commute)
@@ -104,10 +111,11 @@ class Symple:
         self,
         time_penalty: float = -0.02,
         node_count_importance_factor: float = 1.0,
-        compute_penalty_coefficient: float = 1e-6,
+        compute_penalty_coefficient: float = 1e-7,
         min_steps: int = 0,
         max_steps: int = 1000,
     ):
+        assert time_penalty <= 0, "Time penalty must be non-positive"
         self.time_penalty = time_penalty
         self.node_count_importance_factor = node_count_importance_factor
         self.min_steps = min_steps
@@ -115,17 +123,18 @@ class Symple:
         self.max_steps = max_steps
         self.num_ops = NUM_OPS
     def step(self, expr: ExprNode, current_coord: tuple[int, ...], action: int) -> Tuple[ExprNode, tuple[int, ...], float, bool]:
-        reward = self.time_penalty if self.min_steps == 0 else 0.
+        if  (action == OP_FINISH and self.min_steps > 0):
+            vm = self.get_validity_mask(expr, current_coord)
+            assert (torch.nn.functional.one_hot(torch.tensor(action),num_classes = self.num_ops) == vm).all().item(), "Invalid action"
         
         new_expr, new_coord, node_count_reduction = OPS_MAP[action](expr, current_coord)
         
-        reward += self.node_count_importance_factor * node_count_reduction
+        reward = self.time_penalty + self.node_count_importance_factor * node_count_reduction
         
         if self.max_steps > 0:
             self.max_steps -= 1
         if self.min_steps > 0:
             self.min_steps -= 1
-        
         
         done = action == OP_FINISH or self.max_steps == 0
         

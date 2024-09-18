@@ -194,7 +194,7 @@ class SympleAgent(nn.Module):
         
         # Add reward and coordinates to internal and high-level action history
         for entry in history:
-            entry['reward'] = env.time_penalty - (env.compute_penalty_coefficient * entry['complexity'])
+            entry['reward'] = env.time_penalty  - env.compute_penalty_coefficient * entry['complexity']
             entry['coordinates'] = coord
         
         history.append({
