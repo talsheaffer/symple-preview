@@ -17,7 +17,7 @@ from src.model.tree import ExprNode
 from definitions import ROOT_DIR
 
 from aux_policies import random_policy
-# behavior_policy = random_policy
+behavior_policy = random_policy
 behavior_policy = None
 
 # Load the dataset
@@ -36,21 +36,33 @@ df[df.columns[:3]] = df[df.columns[:3]].map(sp.sympify)
 #                                      )
 
 
+# Generate a unique filename for this training run
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+training_data_dir = os.path.join(ROOT_DIR, "train", "training_data")
+os.makedirs(training_data_dir, exist_ok=True)
+json_filename = os.path.join(training_data_dir, f"training_data_{timestamp}.json")
+
+
+model_save_dir = os.path.join(ROOT_DIR, 'train', 'models')
+os.makedirs(model_save_dir, exist_ok=True)
+model_filename = f'model_{timestamp}.pth'
+model_path = os.path.join(model_save_dir, model_filename)
 
 
 
-# Initialize the agent and optimizer
-hidden_size = 128
+
+
+
 # embedding_size = 16
 agent = SympleAgent(
-    hidden_size,
+    hidden_size = 128,
     ffn_n_layers=2,
     # lstm_n_layers=2,
 )
 optimizer = torch.optim.Adam(agent.parameters(), lr=0.001)
 
 # Training loop
-num_epochs = 10
+num_epochs = 20
 batch_size = 32
 
 
@@ -59,12 +71,6 @@ returns = []
 total_time = 0
 eval_times = []
 
-
-# Generate a unique filename for this training run
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-training_data_dir = os.path.join(ROOT_DIR, "train", "training_data")
-os.makedirs(training_data_dir, exist_ok=True)
-json_filename = os.path.join(training_data_dir, f"training_data_{timestamp}.json")
 
 training_data = []
 
@@ -128,15 +134,12 @@ for epoch in range(1, num_epochs + 1):
     # Save data after each epoch
     with open(json_filename, 'w') as f:
         json.dump(training_data, f, indent=2)
+    
+    # Save the model state dict
+    torch.save(agent.state_dict(), model_path)
+    print(f"Model state dict saved to: {model_path}")
 
 avg_time_per_batch = total_time / (num_epochs * (len(df) // batch_size))
 print(f"Training completed. Average time per batch: {avg_time_per_batch:.4f} seconds")
 print(f"Training data saved to: {json_filename}")
 
-# Save the model state dict
-model_save_dir = os.path.join(ROOT_DIR, 'train', 'models')
-os.makedirs(model_save_dir, exist_ok=True)
-model_filename = f'model_{timestamp}.pth'
-model_path = os.path.join(model_save_dir, model_filename)
-torch.save(agent.state_dict(), model_path)
-print(f"Model state dict saved to: {model_path}")
