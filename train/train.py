@@ -62,7 +62,7 @@ agent = SympleAgent(
 optimizer = torch.optim.Adam(agent.parameters(), lr=0.001)
 
 # Training loop
-num_epochs = 20
+num_epochs = 10
 batch_size = 32
 
 
@@ -78,6 +78,8 @@ for epoch in range(1, num_epochs + 1):
     # Shuffle the dataset
     shuffled_data = df['expr'].sample(frac=1).reset_index(drop=True)
     n_batches = len(shuffled_data) // batch_size
+
+    epoch_data = []
     
     for i in range(0, batch_size * n_batches, batch_size):
         batch = shuffled_data[i:i+batch_size].apply(ExprNode.from_sympy).tolist()
@@ -88,7 +90,7 @@ for epoch in range(1, num_epochs + 1):
                                     behavior_policy=behavior_policy,
                                     **dict(
                                         time_penalty=0.02,
-                                        min_steps=20,
+                                        min_steps=30,
                                     )
                                 )
         end_time = time.time()
@@ -111,8 +113,8 @@ for epoch in range(1, num_epochs + 1):
             computed_ncr = input_node_count - output_node_count
             history_ncr = sum([step['node_count_reduction'] for step in history])
             
-            if computed_ncr != history_ncr:
-                print(f"Warning: Computed NCR ({computed_ncr}) doesn't match history NCR ({history_ncr})")
+            # if computed_ncr != history_ncr:
+            #     print(f"Warning: Computed NCR ({computed_ncr}) doesn't match history NCR ({history_ncr})")
                 # print(f"Input expression: {input_expr}")
                 # print(f"Output expression: {output_expr}")
 
@@ -126,14 +128,23 @@ for epoch in range(1, num_epochs + 1):
             'avg_eval_time': avg_eval_time,
             'history': batch_history,
             'input_expressions': [str(expr) for expr in batch],
-            'output_expressions': [str(expr) for expr in output_expr_nodes],
+            'output_expressions': [str(expr.to_sympy()) for expr in output_expr_nodes],
             'node_count_reductions': [input_expr.node_count() - output_expr.node_count() for input_expr, output_expr in zip(batch, output_expr_nodes)]
         }
-        training_data.append(batch_data)
+        epoch_data.append(batch_data)
 
     # Save data after each epoch
-    with open(json_filename, 'w') as f:
-        json.dump(training_data, f, indent=2)
+    if epoch > 1:
+        with open(json_filename, 'rb+') as f:  # Changed 'rb+' to 'r+'
+            f.seek(-2, os.SEEK_END)
+            f.truncate()
+        with open(json_filename, 'a') as f:
+            f.write(',')
+            json_string = json.dumps(epoch_data, indent=2)
+            f.write(json_string[1:])
+    else:
+        with open(json_filename, 'w') as f:
+            json.dump(epoch_data, f, indent=2)
     
     # Save the model state dict
     torch.save(agent.state_dict(), model_path)
