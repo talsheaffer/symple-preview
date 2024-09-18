@@ -5,6 +5,8 @@ import numpy as np
 from datetime import datetime
 from definitions import ROOT_DIR
 
+from src.model.environment import TIME_PENALTY, NODE_COUNT_IMPORTANCE_FACTOR, COMPUTE_PENALTY_COEFFICIENT
+
 # Find the most recent JSON file
 json_dir = os.path.join(ROOT_DIR, 'train/training_data')
 json_files = [f for f in os.listdir(json_dir) if f.startswith('training_data_') and f.endswith('.json')]
@@ -121,10 +123,10 @@ compute_penalties = [time_step['complexity'] for batch in data for hist in batch
 actions = [ (time_step['action_type'], time_step['action']) for batch in data for hist in batch['history'] for time_step in hist]
 
 # Extract time penalty from the first batch (assuming it's constant across all batches)
-time_penalty = -0.02
+time_penalty = TIME_PENALTY
 
 # Calculate expected rewards
-expected_rewards = [time_penalty - 1e-8 * cp + ncr for cp, ncr in zip(compute_penalties, ncrs)]
+expected_rewards = [time_penalty - COMPUTE_PENALTY_COEFFICIENT * cp + NODE_COUNT_IMPORTANCE_FACTOR * ncr for cp, ncr in zip(compute_penalties, ncrs)]
 
 # Compare expected rewards with actual rewards
 differences = [abs(r - er) for r, er in zip(rewards, expected_rewards)]

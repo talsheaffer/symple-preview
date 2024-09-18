@@ -7,6 +7,15 @@ from src.utils import iota
 
 import sympy as sp
 
+TIME_PENALTY = -0.02
+NODE_COUNT_IMPORTANCE_FACTOR = 1.0
+COMPUTE_PENALTY_COEFFICIENT = 1e-8
+
+
+
+
+
+
 def apply_op_for_no_change(op_func):
     def wrapper(expr: ExprNode, coord: tuple[int, ...]) -> Tuple[ExprNode, tuple[int, ...], int]:
         new_expr = expr.apply_at_coord(coord, op_func)

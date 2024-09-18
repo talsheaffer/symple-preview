@@ -62,7 +62,7 @@ agent = SympleAgent(
 optimizer = torch.optim.Adam(agent.parameters(), lr=0.001)
 
 # Training loop
-num_epochs = 2
+num_epochs = 20
 batch_size = 32
 
 
