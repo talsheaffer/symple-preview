@@ -18,7 +18,8 @@ from definitions import ROOT_DIR
 
 from aux_policies import random_policy
 behavior_policy = random_policy
-behavior_policy = None
+behavior_policy = ('temperature', 5.0)
+# behavior_policy = None
 
 # Load the dataset
 
@@ -87,7 +88,7 @@ for epoch in range(1, num_epochs + 1):
         # Measure time for training on the batch
         start_time = time.time()
         avg_return, batch_history, output_expr_nodes = train_on_batch(agent, batch, optimizer,
-                                    behavior_policy=behavior_policy,
+                                    behavior_policy=behavior_policy if epoch <= 10 else None,
                                     **dict(
                                         # time_penalty=-0.02,
                                         min_steps=30,
@@ -101,24 +102,24 @@ for epoch in range(1, num_epochs + 1):
         returns.append(avg_return)
         avg_eval_time = batch_time / batch_size  # Calculate average evaluation time per expression
         eval_times.append(avg_eval_time)
-        avg_ncr = sum([sum([step['node_count_reduction'] for step in history]) for history in batch_history]) / len(batch_history)
+        avg_ncr = sum([history['node_count_reduction'] for history in batch_history]) / len(batch_history)
         
         batch_number = (i // batch_size) + 1
         print(f"Epoch {epoch}/{num_epochs}, Batch {batch_number}/{n_batches}, Return: {avg_return:.4f}, NCR: {avg_ncr:.4f}, Batch Time: {batch_time:.4f} seconds, Avg Eval Time: {avg_eval_time:.4f} seconds")
 
         # Compute and verify node count reduction
         for input_expr, output_expr, history in zip(
-            shuffled_data[i:i+batch_size].apply(ExprNode.from_sympy).tolist(), output_expr_nodes, batch_history
+            shuffled_data[i:i+batch_size].tolist(), output_expr_nodes, batch_history
         ):
-            input_node_count = input_expr.node_count()
+            history['input'] = str(input_expr)
+            history['output'] = str(output_expr.to_sympy())
+
+            input_node_count = ExprNode.from_sympy(input_expr).node_count()
             output_node_count = output_expr.node_count()
             computed_ncr = input_node_count - output_node_count
-            history_ncr = sum([step['node_count_reduction'] for step in history])
+            history_ncr = history['node_count_reduction']
             
             assert computed_ncr == history_ncr, f"Warning: Computed NCR ({computed_ncr}) doesn't match history NCR ({history_ncr})"
-                # print(f"Warning: Computed NCR ({computed_ncr}) doesn't match history NCR ({history_ncr})")
-                # print(f"Input expression: {input_expr}")
-                # print(f"Output expression: {output_expr}")
 
         # Save batch data
         batch_data = {
@@ -128,10 +129,7 @@ for epoch in range(1, num_epochs + 1):
             'avg_ncr': avg_ncr,
             'batch_time': batch_time,
             'avg_eval_time': avg_eval_time,
-            'history': batch_history,
-            'input_expressions': [str(expr) for expr in batch],
-            'output_expressions': [str(expr.to_sympy()) for expr in output_expr_nodes],
-            'node_count_reductions': [input_expr.node_count() - output_expr.node_count() for input_expr, output_expr in zip(batch, output_expr_nodes)]
+            'history': batch_history
         }
         epoch_data.append(batch_data)
 
