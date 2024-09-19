@@ -93,9 +93,6 @@ def train_on_batch(
         if behavior_policy:
             history, output_en = agent(en, env, behavior_policy=behavior_policy)
             output_expr_nodes.append(output_en)
-
-            # flatten the sequence
-            # unpack the rewards
             
             rewards = [
                 step['reward'] for step in history

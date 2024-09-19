@@ -221,7 +221,8 @@ class SympleAgent(nn.Module):
             internal_probs = F.softmax(internal_logits, dim=-1)
         internal_action = torch.multinomial(internal_probs, 1).item()
         internal_action_prob = internal_probs[:,internal_action]
-        target_internal_action_prob = target_probs[:,internal_action]
+        if temperature is not None:
+            target_internal_action_prob = target_probs[:,internal_action]
 
         event = {
             'action_type': 'internal',
@@ -285,9 +286,9 @@ class SympleAgent(nn.Module):
 
             history.append(event)
             
-            action_probs, sub_history, h_glob, c_glob = self.policy(current_node, validity_mask, h_glob, c_glob, recursion_depth - 1)
+            sub_history, action, action_probs, h_glob, c_glob = self.policy(current_node, validity_mask, h_glob, c_glob, recursion_depth - 1)
             history.extend(sub_history)
-            return action_probs, history, h_glob, c_glob
+            return history, action, action_probs, h_glob, c_glob
         
         # Apply validity mask to actor weights
         event, action, action_probs = self.apply_external_perceptron(features, validity_mask, temperature)
@@ -403,6 +404,6 @@ class SympleAgent(nn.Module):
         
         while not done:
             state, coord, done, step_history, h_glob, c_glob = self.off_policy_step(state, coord, env, behavior_policy, h_glob, c_glob)
-            history.append(step_history)
+            history.extend(step_history)
         
         return history, state.reset_tensors()
