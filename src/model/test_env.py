@@ -1,9 +1,26 @@
 import unittest
-import torch
-from src.model.environment import Symple, OPS_MAP, NUM_OPS, OP_FINISH, OP_MOVE_UP, OP_MOVE_LEFT, OP_MOVE_RIGHT, OP_DISTRIBUTE_B, OP_UNDISTRIBUTE_B, OP_REDUCE_UNIT
-from src.model.tree import ExprNode, ADD_TYPE, MUL_TYPE, X_TYPE, Y_TYPE, Z_TYPE
+
+from src.model.environment import(
+    Symple, 
+    # OPS_MAP, 
+    NUM_OPS, 
+    OP_FINISH, 
+    OP_MOVE_UP, 
+    OP_MOVE_LEFT, 
+    OP_MOVE_RIGHT, 
+    # OP_DISTRIBUTE_B, 
+    # OP_UNDISTRIBUTE_B, 
+    OP_REDUCE_UNIT
+)
+from src.model.tree import(
+    ExprNode, 
+    ADD_TYPE, 
+    # MUL_TYPE, 
+    X_TYPE, 
+    Y_TYPE, 
+    # Z_TYPE
+)
 import sympy as sp
-from src.model.tree import ExprNode
 
 class TestSympleEnvironment(unittest.TestCase):
     def setUp(self):
