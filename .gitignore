@@ -11,4 +11,6 @@ scratch.ipynb
 .vscode
 train/training_data/
 train/figures/
+train/models/
+
 
