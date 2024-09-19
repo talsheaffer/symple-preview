@@ -94,8 +94,7 @@ plt.close()
 
 
 # Calculate true mean node count reduction
-true_ncr = [batch['node_count_reductions'] for batch in data]
-true_ncr = [item for sublist in true_ncr for item in sublist]  # Flatten the list
+true_ncr = [example['node_count_reduction'] for batch in data for example in batch['history']]
 
 mean_ncr = np.mean(true_ncr)
 std_ncr = np.std(true_ncr)
@@ -117,10 +116,10 @@ print(f"Standard Deviation of Node Count Reduction: {std_ncr:.2f}")
 
 
 # Extract rewards, node count reductions, and compute penalties
-rewards = [time_step['reward'] for batch in data for hist in batch['history'] for time_step in hist]
-ncrs = [time_step['node_count_reduction'] for batch in data for hist in batch['history'] for time_step in hist]
-compute_penalties = [time_step['complexity'] for batch in data for hist in batch['history'] for time_step in hist]
-actions = [ (time_step['action_type'], time_step['action']) for batch in data for hist in batch['history'] for time_step in hist]
+rewards = [time_step['reward'] for batch in data for example in batch['history'] for time_step in example['example_history']]
+ncrs = [time_step['node_count_reduction'] for batch in data for example in batch['history'] for time_step in example['example_history']]
+compute_penalties = [time_step['complexity'] for batch in data for example in batch['history'] for time_step in example['example_history']]
+actions = [ (time_step['action_type'], time_step['action']) for batch in data for example in batch['history'] for time_step in example['example_history']]
 
 # Extract time penalty from the first batch (assuming it's constant across all batches)
 time_penalty = -0.02
@@ -171,3 +170,23 @@ for action, avg_diff in sorted_actions:
 top_10_actions = sorted_actions[:10]
 action_names = [f"{action[0]}: {action[1]}" for action, _ in top_10_actions]
 avg_diffs = [avg_diff for _, avg_diff in top_10_actions]
+
+
+
+# Filter external actions
+external_actions = [action[1] for action in actions if action[0] not in ['high_level', 'internal']]
+
+# Create histogram
+plt.figure(figsize=(12, 6))
+plt.hist(external_actions, bins=len(set(external_actions)), edgecolor='black')
+plt.title('Histogram of External Actions')
+plt.xlabel('Action')
+plt.ylabel('Frequency')
+plt.xticks(rotation=45, ha='right')
+plt.tight_layout()
+
+# Save the plot
+plt.savefig(os.path.join(figures_dir, 'external_actions_histogram.png'))
+plt.close()
+
+print("Histogram of external actions has been saved as 'external_actions_histogram.png'")
