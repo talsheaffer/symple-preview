@@ -78,7 +78,6 @@ class SympleAgent(nn.Module):
                     )
                 )
         # auxiliary variables
-        self.temperature = 3.0
         self.tz = torch.zeros((1, self.hidden_size), device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE)
 
     def apply_internal_op(self, input: ExprNode, op_num: int, h_glob: torch.Tensor, c_glob: torch.Tensor) -> Tuple[ExprNode, float, torch.Tensor, torch.Tensor]:
@@ -148,7 +147,6 @@ class SympleAgent(nn.Module):
         
         return input
     
-
     def apply_ternary_lstm(self, input: ExprNode, depth=0) -> ExprNode:
         """
         Applies a ternary LSTM to the input expression tree recursively.
@@ -180,93 +178,144 @@ class SympleAgent(nn.Module):
         )
         
         return input
-        
-
-    def policy(self, current_node: ExprNode, validity_mask: torch.Tensor, h_glob: torch.Tensor, c_glob: torch.Tensor, recursion_depth: int = 5):
-        history = []
-
-        # Concatenate current node's hidden state with global hidden state
-        features = torch.cat([current_node.hidden, h_glob[-1]], dim=-1)
-
-        # Decide whether to act or further process the expression
+    
+    def apply_high_level_perceptron(self, features: torch.Tensor, recursion_depth: int = 5, temperature: Optional[float] = None) -> Tuple[dict, int]:
         if recursion_depth <= 0:
             high_level_probs = torch.tensor([[0, 1]], device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE)
             high_level_action = 1
             high_level_action_prob = high_level_probs[:,high_level_action]
+            target_high_level_action_prob = high_level_action_prob
         else:
             high_level_logits = self.high_level_actor(features)
-            high_level_probs = F.softmax(high_level_logits/self.temperature, dim=-1)
+            if temperature is not None:
+                target_probs = F.softmax(high_level_logits, dim=-1)
+                high_level_probs = F.softmax(high_level_logits/temperature, dim=-1)
+            else:
+                high_level_probs = F.softmax(high_level_logits, dim=-1)
             high_level_action = torch.multinomial(high_level_probs, 1).item()
             high_level_action_prob = high_level_probs[:,high_level_action]
+            if temperature is not None:
+                target_high_level_action_prob = target_probs[:,high_level_action]
         
         # Add high-level action to history
-        history.append({
+        event = {
             'action_type': 'high_level',
             'action': high_level_action,
-            'probability': high_level_action_prob if self.training else high_level_action_prob.item(),
             'complexity': 0.0,
             'node_count_reduction': 0.0
-        })
+        }
+        if temperature is not None:
+            event['target_probability'] = target_high_level_action_prob if self.training else target_high_level_action_prob.item()
+            event['behavior_probability'] = high_level_action_prob.detach() if self.training else high_level_action_prob.item()
+        else:
+            event['probability'] = high_level_action_prob if self.training else high_level_action_prob.item()
+        
+        return event, high_level_action
+    
+    def apply_internal_perceptron(self, features: torch.Tensor, temperature: Optional[float] = None) -> Tuple[dict, int]:
+        internal_logits = self.internal_actor(features)
+        if temperature is not None:
+            target_probs = F.softmax(internal_logits, dim=-1)
+            internal_probs = F.softmax(internal_logits/temperature, dim=-1)
+        else:
+            internal_probs = F.softmax(internal_logits, dim=-1)
+        internal_action = torch.multinomial(internal_probs, 1).item()
+        internal_action_prob = internal_probs[:,internal_action]
+        target_internal_action_prob = target_probs[:,internal_action]
+
+        event = {
+            'action_type': 'internal',
+            'action': internal_action,
+            'node_count_reduction': 0.0
+        }
+        if temperature is not None:
+            event['target_probability'] = target_internal_action_prob if self.training else target_internal_action_prob.item()
+            event['behavior_probability'] = internal_action_prob.detach() if self.training else internal_action_prob.item()
+        else:
+            event['probability'] = internal_action_prob if self.training else internal_action_prob.item()
+        
+        return event, internal_action
+    
+    def apply_external_perceptron(self, features: torch.Tensor, validity_mask: torch.Tensor, temperature: Optional[float] = None) -> Tuple[dict, int, torch.Tensor]:
+        valid_actor_weights = self.actor.weight * validity_mask.unsqueeze(1)
+        valid_actor_bias = self.actor.bias * validity_mask
+        logits = validity_mask.log() + F.linear(features, valid_actor_weights, valid_actor_bias)
+        if temperature is not None:
+            target_probs = F.softmax(logits, dim=-1)
+            action_probs = F.softmax(logits/temperature, dim=-1)
+            action = torch.multinomial(action_probs, 1).item()
+            action_prob = action_probs[:,action]
+            target_action_prob = target_probs[:,action]
+        else:
+            action_probs = F.softmax(logits, dim=-1)
+            action = torch.multinomial(action_probs, 1).item()
+            action_prob = action_probs[:,action]
+        
+        event = {
+            'action_type': 'external',
+            'action': action,
+            'complexity': 0.0,
+        }
+        if temperature is not None:
+            event['target_probability'] = target_action_prob if self.training else target_action_prob.item()
+            event['behavior_probability'] = action_prob.detach() if self.training else action_prob.item()
+        else:
+            event['probability'] = action_prob if self.training else action_prob.item()
+        
+        return event, action, action_probs
+    
+    def policy(self, current_node: ExprNode, validity_mask: torch.Tensor, recursion_depth: int = 5, temperature: Optional[float] = None) -> Tuple[List[Dict], int]:
+        history = []
+
+        features = torch.cat([current_node.hidden, h_glob[-1]], dim=-1)
+
+
+        # Decide whether to act or further process the expression
+        event, high_level_action = self.apply_high_level_perceptron(features, recursion_depth, temperature)
+        history.append(event)
 
         if high_level_action == 0:
             # Internal op
-            internal_logits = self.internal_actor(features)
-            internal_probs = F.softmax(internal_logits/self.temperature, dim=-1)
-            internal_action = torch.multinomial(internal_probs, 1).item()
-            internal_action_prob = internal_probs[:,internal_action]
-            
+            event, internal_action = self.apply_internal_perceptron(features, temperature)
+
 
             current_node, complexity, h_glob, c_glob = self.apply_internal_op(current_node, internal_action, h_glob, c_glob)
-            
-            history.append({
-                'action_type': 'internal',
-                'action': internal_action,
-                'probability': internal_action_prob if self.training else internal_action_prob.item(),
-                'complexity': complexity,
-                'node_count_reduction': 0.0
-            })
+
+            event['complexity'] = complexity
+
+            history.append(event)
             
             action_probs, sub_history, h_glob, c_glob = self.policy(current_node, validity_mask, h_glob, c_glob, recursion_depth - 1)
             history.extend(sub_history)
             return action_probs, history, h_glob, c_glob
         
         # Apply validity mask to actor weights
-        valid_actor_weights = self.actor.weight * validity_mask.unsqueeze(1)
-        valid_actor_bias = self.actor.bias * validity_mask
-        logits = validity_mask.log() + F.linear(features, valid_actor_weights, valid_actor_bias)
-        action_probs = F.softmax(logits / self.temperature, dim=-1)
-        return action_probs, history, h_glob, c_glob
+        event, action, action_probs = self.apply_external_perceptron(features, validity_mask, temperature)
+        history.append(event)
+        return history, action, action_probs
 
     def step(self, state: ExprNode, coord: tuple[int, ...], env: Symple, h_glob: torch.Tensor, c_glob: torch.Tensor):
         current_node = state.get_node(coord)
-        action_probs, history, h_glob, c_glob = self.policy(current_node, env.get_validity_mask(current_node), h_glob, c_glob)
-        action = torch.multinomial(action_probs, 1).item()
-        action_prob = action_probs[:,action]
+        history, h_glob, c_glob, action, _ = self.policy(current_node, env.get_validity_mask(current_node), h_glob, c_glob, **policy_kwargs)
+        # Add reward and coordinates to internal and high-level action history
+        for entry in history[:-1]:
+            entry['reward'] = env.time_penalty  - env.compute_penalty_coefficient * entry['complexity']
+            entry['coordinates'] = coord
 
         new_state, new_coord, reward, node_count_reduction, done = env.step(state, coord, action)
         
-        # Add reward and coordinates to internal and high-level action history
-        for entry in history:
-            entry['reward'] = env.time_penalty  - env.compute_penalty_coefficient * entry['complexity']
-            entry['coordinates'] = coord
-        
-        history.append({
-            'action_type': 'external',
-            'action': action,
-            'probability': action_prob if self.training else action_prob.item(),
-            'complexity': 0.0,
-            'node_count_reduction': node_count_reduction, 
-            'reward': reward,
-            'coordinates': coord
-        })
+        # Add reward and coordinates to external action history
+        history[-1]['reward'] = reward
+        history[-1]['coordinates'] = coord
+        history[-1]['node_count_reduction'] = node_count_reduction
         
         return new_state, new_coord, done, history, h_glob, c_glob
 
     def forward(self, state: ExprNode, env: Symple,
                 behavior_policy: Optional[
-                    Callable[
+                    Union[Callable[
                         [ExprNode, tuple[int, ...], Symple], Union[torch.Tensor, List[float]]
-                    ]
+                    ], Tuple[str, float]]
                 ] = None
                 ) -> Union[
                     Tuple[List[Dict], ExprNode],
@@ -292,37 +341,54 @@ class SympleAgent(nn.Module):
         return history, state.reset_tensors()
     
     def off_policy_step(self, state: ExprNode, coord: tuple[int, ...], env: Symple,
-                        behavior_policy: Callable[[ExprNode, tuple[int, ...], Symple], Union[torch.Tensor, List[float]]],
-                        h_glob: torch.Tensor, c_glob: torch.Tensor
+                        behavior_policy: Union[
+                            Callable[[ExprNode, tuple[int, ...], Symple], Union[torch.Tensor, List[float]]],
+                        h_glob: torch.Tensor, c_glob: torch.Tensor, Tuple[str, float]
+                        ]
                         ) -> Tuple[ExprNode, tuple[int, ...], bool, Dict, torch.Tensor, torch.Tensor]:
+
+        if isinstance(behavior_policy, tuple):
+            if behavior_policy[0] == 'temperature':
+                temperature = behavior_policy[1]
+                return self.step(state, coord, env, temperature=temperature)
+            else:
+                raise ValueError(f"Invalid behavior policy type: {behavior_policy[0]}")
+
         current_node = state.get_node(coord)
         validity_mask = env.get_validity_mask(current_node)
-        target_probs, policy_history, h_glob, c_glob = self.policy(current_node, validity_mask, h_glob, c_glob)
+        history, _, target_probs, h_glob, c_glob = self.policy(current_node, validity_mask, h_glob, c_glob, temperature=1.0) # Use own policy as both target and behavior policy
+        history = history[:-1] # Last action is on-policy, ignore it
+
+        for entry in history:
+            entry['reward'] = env.time_penalty - (env.compute_penalty_coefficient * entry['complexity'])
+            entry['coordinates'] = coord
         
+
         behavior_probs = behavior_policy(state, validity_mask)
         action = torch.multinomial(torch.tensor(behavior_probs), 1).item()
+
         target_action_prob = target_probs[:,action]
         behavior_action_prob = behavior_probs[:,action]
         new_state, new_coord, reward, node_count_reduction, done = env.step(state, coord, action)
         
-        for entry in policy_history:
-            entry['reward'] = env.time_penalty - (env.compute_penalty_coefficient * entry['complexity'])
-            entry['coordinates'] = coord
         
-        step_history = {
+        event = {
+            'action_type': 'external',
             'action': action,
             'target_probability': target_action_prob if self.training else target_action_prob.item(),
             'behavior_probability': behavior_action_prob.detach() if self.training else behavior_action_prob.item(),
             'reward': reward,
+            'complexity': 0.0,
             'node_count_reduction': node_count_reduction,
-            'target_policy_history': policy_history,
             'coordinates': coord
         }
+
+        history.append(event)
         
-        return new_state, new_coord, done, step_history, h_glob, c_glob
+        return new_state, new_coord, done, history, h_glob, c_glob
     
     def off_policy_forward(self, state: ExprNode, env: Symple,
-                           behavior_policy: Callable[[ExprNode, tuple[int, ...], Symple], Union[torch.Tensor, List[float]]]
+                           behavior_policy: Union[Callable[[ExprNode, tuple[int, ...], Symple], Union[torch.Tensor, List[float]]], Tuple[str, float]]
                            ) -> Tuple[List[Dict], ExprNode]:
         
         h_glob = torch.zeros((self.lstm.num_layers, 1, self.global_hidden_size), device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE)
