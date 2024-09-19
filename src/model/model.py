@@ -265,7 +265,7 @@ class SympleAgent(nn.Module):
         
         return event, action, action_probs
     
-    def policy(self, current_node: ExprNode, validity_mask: torch.Tensor, recursion_depth: int = 5, temperature: Optional[float] = None) -> Tuple[List[Dict], int]:
+    def policy(self, current_node: ExprNode, validity_mask: torch.Tensor, h_glob: torch.Tensor, c_glob: torch.Tensor, recursion_depth: int = 5, temperature: Optional[float] = None) -> Tuple[List[Dict], int]:
         history = []
 
         features = torch.cat([current_node.hidden, h_glob[-1]], dim=-1)
@@ -286,18 +286,18 @@ class SympleAgent(nn.Module):
 
             history.append(event)
             
-            sub_history, action, action_probs, h_glob, c_glob = self.policy(current_node, validity_mask, h_glob, c_glob, recursion_depth - 1)
+            sub_history, action, action_probs, h_glob, c_glob = self.policy(current_node, validity_mask, h_glob, c_glob, recursion_depth - 1, temperature)
             history.extend(sub_history)
             return history, action, action_probs, h_glob, c_glob
         
         # Apply validity mask to actor weights
         event, action, action_probs = self.apply_external_perceptron(features, validity_mask, temperature)
         history.append(event)
-        return history, action, action_probs
+        return history, action, action_probs, h_glob, c_glob
 
-    def step(self, state: ExprNode, coord: tuple[int, ...], env: Symple, h_glob: torch.Tensor, c_glob: torch.Tensor):
+    def step(self, state: ExprNode, coord: tuple[int, ...], env: Symple, h_glob: torch.Tensor, c_glob: torch.Tensor, **policy_kwargs):
         current_node = state.get_node(coord)
-        history, h_glob, c_glob, action, _ = self.policy(current_node, env.get_validity_mask(current_node), h_glob, c_glob, **policy_kwargs)
+        history, action, _, h_glob, c_glob = self.policy(current_node, env.get_validity_mask(current_node), h_glob, c_glob, **policy_kwargs)
         # Add reward and coordinates to internal and high-level action history
         for entry in history[:-1]:
             entry['reward'] = env.time_penalty  - env.compute_penalty_coefficient * entry['complexity']
@@ -344,14 +344,15 @@ class SympleAgent(nn.Module):
     def off_policy_step(self, state: ExprNode, coord: tuple[int, ...], env: Symple,
                         behavior_policy: Union[
                             Callable[[ExprNode, tuple[int, ...], Symple], Union[torch.Tensor, List[float]]],
-                        h_glob: torch.Tensor, c_glob: torch.Tensor, Tuple[str, float]
-                        ]
+                        Tuple[str, float]
+                        ],
+                        h_glob: torch.Tensor, c_glob: torch.Tensor,
                         ) -> Tuple[ExprNode, tuple[int, ...], bool, Dict, torch.Tensor, torch.Tensor]:
 
         if isinstance(behavior_policy, tuple):
             if behavior_policy[0] == 'temperature':
                 temperature = behavior_policy[1]
-                return self.step(state, coord, env, temperature=temperature)
+                return self.step(state, coord, env, h_glob, c_glob, temperature=temperature)
             else:
                 raise ValueError(f"Invalid behavior policy type: {behavior_policy[0]}")
 

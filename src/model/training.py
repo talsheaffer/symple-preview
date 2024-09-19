@@ -123,7 +123,12 @@ def train_on_batch(
                 if isinstance(value, torch.Tensor):
                     step[key] = value.item()
         
-        batch_history.append(history)
+        batch_history.append({
+            'example_history': history,
+            'return': total_return,
+            'loss': loss.item(),
+            'node_count_reduction': sum([step['node_count_reduction'] for step in history])
+        })
 
     # Perform optimization step
     optimizer.step()
