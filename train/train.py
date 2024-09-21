@@ -58,7 +58,7 @@ model_path = os.path.join(model_save_dir, model_filename)
 agent = SympleAgent(
     hidden_size = 128,
     ffn_n_layers=2,
-    # lstm_n_layers=2,
+    lstm_n_layers=2,
 )
 optimizer = torch.optim.Adam(agent.parameters(), lr=0.001)
 
@@ -88,7 +88,7 @@ for epoch in range(1, num_epochs + 1):
         # Measure time for training on the batch
         start_time = time.time()
         avg_return, batch_history, output_expr_nodes = train_on_batch(agent, batch, optimizer,
-                                    behavior_policy=behavior_policy if epoch <= 10 else None,
+                                    behavior_policy=behavior_policy if epoch <= 20 else None,
                                     **dict(
                                         # time_penalty=-0.02,
                                         min_steps=30,
@@ -154,10 +154,4 @@ avg_time_per_batch = total_time / (num_epochs * (len(df) // batch_size))
 print(f"Training completed. Average time per batch: {avg_time_per_batch:.4f} seconds")
 print(f"Training data saved to: {json_filename}")
 
-# Save the model state dict
-model_save_dir = os.path.join(ROOT_DIR, 'train', 'models')
-os.makedirs(model_save_dir, exist_ok=True)
-model_filename = f'model_{timestamp}.pth'
-model_path = os.path.join(model_save_dir, model_filename)
-torch.save(agent.state_dict(), model_path)
-print(f"Model state dict saved to: {model_path}")
+
