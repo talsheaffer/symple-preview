@@ -7,9 +7,9 @@ from src.utils import iota
 
 import sympy as sp
 
-TIME_PENALTY = -0.02
+TIME_PENALTY = -0.002
 NODE_COUNT_IMPORTANCE_FACTOR = 1.0
-COMPUTE_PENALTY_COEFFICIENT = 1e-8
+COMPUTE_PENALTY_COEFFICIENT = 0
 
 
 
@@ -118,9 +118,9 @@ class Symple:
 
     def __init__(
         self,
-        time_penalty: float = -0.02,
-        node_count_importance_factor: float = 1.0,
-        compute_penalty_coefficient: float = 1e-8,
+        time_penalty: float = TIME_PENALTY,
+        node_count_importance_factor: float = NODE_COUNT_IMPORTANCE_FACTOR,
+        compute_penalty_coefficient: float = COMPUTE_PENALTY_COEFFICIENT,
         min_steps: int = 0,
         max_steps: int = 1000,
     ):
