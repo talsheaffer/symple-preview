@@ -26,6 +26,10 @@ with open(os.path.join(json_dir, latest_json), 'r') as f:
 batch_numbers = []
 returns = []
 eval_times = []
+if 'batch_number_in_epoch' in data[0].keys():
+    for entry in data:
+        entry['batch_number'] = entry['batch_number_in_epoch']
+
 for entry in data:
     epoch = entry['epoch']
     batch_in_epoch = entry['batch_number']
