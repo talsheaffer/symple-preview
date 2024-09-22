@@ -78,7 +78,11 @@ class SympleAgent(nn.Module):
                     )
                 )
         # auxiliary variables
-        self.tz = torch.zeros((1, self.hidden_size), device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE)
+        self.device = DEFAULT_DEVICE
+        
+    @property
+    def tz(self):
+        return torch.zeros((1, self.hidden_size), device=self.device, dtype=DEFAULT_DTYPE)
 
     def apply_internal_op(self, input: ExprNode, op_num: int, h_glob: torch.Tensor, c_glob: torch.Tensor) -> Tuple[ExprNode, float, torch.Tensor, torch.Tensor]:
         """

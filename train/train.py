@@ -11,7 +11,7 @@ import torch
 
 # from src.model.environment import Symple
 from src.model.model import SympleAgent
-from src.model.training import train_on_batch
+from src.model.training import train_on_batch_with_value_function_baseline
 from src.model.tree import ExprNode
 
 from definitions import ROOT_DIR
@@ -57,6 +57,7 @@ model_path = os.path.join(model_save_dir, model_filename)
 # embedding_size = 16
 agent = SympleAgent(
     hidden_size = 128,
+    num_internal_ops = 7,
     ffn_n_layers=2,
     lstm_n_layers=2,
 )
@@ -75,6 +76,11 @@ eval_times = []
 
 training_data = []
 
+# Initialize value function estimate
+V = torch.zeros(1, device=agent.device)
+
+overall_batch_num = 0
+
 for epoch in range(1, num_epochs + 1):
     # Shuffle the dataset
     shuffled_data = df['expr'].sample(frac=1).reset_index(drop=True)
@@ -87,13 +93,18 @@ for epoch in range(1, num_epochs + 1):
         
         # Measure time for training on the batch
         start_time = time.time()
-        avg_return, batch_history, output_expr_nodes = train_on_batch(agent, batch, optimizer,
-                                    behavior_policy=behavior_policy if epoch <= 20 else None,
-                                    **dict(
-                                        # time_penalty=-0.02,
-                                        min_steps=30,
-                                    )
-                                )
+        overall_batch_num += 1
+        batch_number_in_epoch = (i // batch_size) + 1
+        avg_return, batch_history, output_expr_nodes, V = train_on_batch_with_value_function_baseline(
+            agent, batch, optimizer,
+            V=V,
+            batch_num=overall_batch_num,
+            # behavior_policy=behavior_policy if epoch <= 20 else None,
+            **dict(
+                # time_penalty=-0.02,
+                # min_steps=30,
+            )
+        )
         end_time = time.time()
         
         batch_time = end_time - start_time
@@ -104,8 +115,7 @@ for epoch in range(1, num_epochs + 1):
         eval_times.append(avg_eval_time)
         avg_ncr = sum([history['node_count_reduction'] for history in batch_history]) / len(batch_history)
         
-        batch_number = (i // batch_size) + 1
-        print(f"Epoch {epoch}/{num_epochs}, Batch {batch_number}/{n_batches}, Return: {avg_return:.4f}, NCR: {avg_ncr:.4f}, Batch Time: {batch_time:.4f} seconds, Avg Eval Time: {avg_eval_time:.4f} seconds")
+        print(f"Epoch {epoch}/{num_epochs}, Batch {batch_number_in_epoch}/{n_batches}, Return: {avg_return:.4f}, NCR: {avg_ncr:.4f}, Batch Time: {batch_time:.4f} seconds, Avg Eval Time: {avg_eval_time:.4f} seconds")
 
         # Compute and verify node count reduction
         for input_expr, output_expr, history in zip(
@@ -124,7 +134,8 @@ for epoch in range(1, num_epochs + 1):
         # Save batch data
         batch_data = {
             'epoch': epoch,
-            'batch_number': batch_number,
+            'batch_number_in_epoch': batch_number_in_epoch,
+            'overall_batch_number': overall_batch_num,
             'avg_return': avg_return,
             'avg_ncr': avg_ncr,
             'batch_time': batch_time,
@@ -135,7 +146,7 @@ for epoch in range(1, num_epochs + 1):
 
     # Save data after each epoch
     if epoch > 1:
-        with open(json_filename, 'rb+') as f:  # Changed 'rb+' to 'r+'
+        with open(json_filename, 'rb+') as f:
             f.seek(-2, os.SEEK_END)
             f.truncate()
         with open(json_filename, 'a') as f:
@@ -153,5 +164,3 @@ for epoch in range(1, num_epochs + 1):
 avg_time_per_batch = total_time / (num_epochs * (len(df) // batch_size))
 print(f"Training completed. Average time per batch: {avg_time_per_batch:.4f} seconds")
 print(f"Training data saved to: {json_filename}")
-
-
