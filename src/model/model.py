@@ -42,9 +42,10 @@ class SympleAgent(nn.Module):
         self.blstm = NaryTreeLSTM(2, self.vocab_size, self.hidden_size)
         self.tlstm = NaryTreeLSTM(3, self.vocab_size, self.hidden_size)
         self.ffn = FFN(self.hidden_size, self.hidden_size, self.hidden_size, n_layers=ffn_n_layers)
+        self.teleport_ffn = FFN(self.global_hidden_size + self.hidden_size, self.hidden_size, 1, n_layers=ffn_n_layers)
 
         # Perceptrons for high-level and internal decisions
-        self.high_level_actor = nn.Linear(self.hidden_size + self.global_hidden_size, 2)
+        self.high_level_actor = nn.Linear(self.hidden_size + self.global_hidden_size, 3)  # Changed to 3 for teleport action
         self.internal_actor = nn.Linear(self.hidden_size + self.global_hidden_size, self.num_internal_ops)
         self.actor = nn.Linear(self.hidden_size + self.global_hidden_size, self.num_ops)
 
@@ -183,10 +184,10 @@ class SympleAgent(nn.Module):
         
         return input
     
-    def apply_high_level_perceptron(self, features: torch.Tensor, recursion_depth: int = 5, temperature: Optional[float] = None) -> Tuple[dict, int]:
+    def apply_high_level_perceptron(self, features: torch.Tensor, recursion_depth: int = 5, temperature: Optional[float] = None, high_level_mask: Optional[torch.Tensor] = None) -> Tuple[dict, int]:
         if recursion_depth <= 0:
-            high_level_probs = torch.tensor([[0, 1]], device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE)
-            high_level_action = 1
+            high_level_probs = torch.tensor([[0, 0, 1]], device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE)
+            high_level_action = 2
             high_level_action_prob = high_level_probs[:,high_level_action]
             target_high_level_action_prob = high_level_action_prob
         else:
@@ -196,7 +197,12 @@ class SympleAgent(nn.Module):
                 high_level_probs = F.softmax(high_level_logits/temperature, dim=-1)
             else:
                 high_level_probs = F.softmax(high_level_logits, dim=-1)
-            high_level_action = torch.multinomial(high_level_probs, 1).item()
+            if high_level_mask is None:
+                high_level_action = torch.multinomial(high_level_probs, 1).item()
+            else:
+                masked_high_level_probs = high_level_probs * high_level_mask
+                masked_high_level_probs = masked_high_level_probs / masked_high_level_probs.sum(dim=-1, keepdim=True)
+                high_level_action = torch.multinomial(masked_high_level_probs, 1).item()
             high_level_action_prob = high_level_probs[:,high_level_action]
             if temperature is not None:
                 target_high_level_action_prob = target_probs[:,high_level_action]
@@ -269,20 +275,62 @@ class SympleAgent(nn.Module):
         
         return event, action, action_probs
     
-    def policy(self, current_node: ExprNode, validity_mask: torch.Tensor, h_glob: torch.Tensor, c_glob: torch.Tensor, recursion_depth: int = 5, temperature: Optional[float] = None) -> Tuple[List[Dict], int]:
+    def apply_teleport_ffn(self, features: torch.Tensor, temperature: Optional[float] = None) -> torch.Tensor:
+        teleport_logits = self.teleport_ffn(features).transpose(-1,-2)
+        if temperature is not None:
+            target_probs = F.softmax(teleport_logits, dim=-1)
+            teleport_probs = F.softmax(teleport_logits/temperature, dim=-1)
+        else:
+            teleport_probs = F.softmax(teleport_logits, dim=-1)
+        teleport_action = torch.multinomial(teleport_probs, 1).item()
+        teleport_action_prob = teleport_probs[:,teleport_action]
+        if temperature is not None:
+            target_teleport_action_prob = target_probs[:,teleport_action]
+        event = {
+            'action_type': 'teleport',
+            'action': teleport_action,
+            'complexity': 0.0,
+            'node_count_reduction': 0.0
+        }
+        if temperature is not None:
+            event['target_probability'] = target_teleport_action_prob if self.training else target_teleport_action_prob.item()
+            event['behavior_probability'] = teleport_action_prob.detach() if self.training else teleport_action_prob.item()
+        else:
+            event['probability'] = teleport_action_prob if self.training else teleport_action_prob.item()
+        
+        return event, teleport_action, teleport_probs
+
+    def apply_teleport(self, h_glob: torch.Tensor, state: ExprNode, **kwargs) -> Tuple[dict, tuple[int, ...]]:
+        coords_and_nodes = state.get_coords_and_nodes()
+        combined_hidden_list = [torch.cat([h_glob[-1], node.hidden], dim=-1) for _, node in coords_and_nodes]
+        combined_hidden = torch.cat(combined_hidden_list, dim=0)
+        
+        event, teleport_action, teleport_probs = self.apply_teleport_ffn(combined_hidden, **kwargs)
+        
+        return event, teleport_action, teleport_probs
+    
+    def policy(
+            self, state: ExprNode,
+            coord: tuple[int, ...],
+            validity_mask: torch.Tensor,
+            h_glob: torch.Tensor,
+            c_glob: torch.Tensor,
+            recursion_depth: int = 5,
+            temperature: Optional[float] = None,
+            high_level_mask: Optional[torch.Tensor] = None
+    ) -> Tuple[List[Dict], int]:
         history = []
 
+        current_node = state.get_node(coord)
         features = torch.cat([current_node.hidden, h_glob[-1]], dim=-1)
 
-
-        # Decide whether to act or further process the expression
-        event, high_level_action = self.apply_high_level_perceptron(features, recursion_depth, temperature)
+        # Decide whether to act, further process the expression, or teleport
+        event, high_level_action = self.apply_high_level_perceptron(features, recursion_depth, temperature = temperature, high_level_mask=high_level_mask)
         history.append(event)
 
         if high_level_action == 0:
             # Internal op
-            event, internal_action = self.apply_internal_perceptron(features, temperature)
-
+            event, internal_action = self.apply_internal_perceptron(features, temperature = temperature)
 
             current_node, complexity, h_glob, c_glob = self.apply_internal_op(current_node, internal_action, h_glob, c_glob)
 
@@ -290,29 +338,46 @@ class SympleAgent(nn.Module):
 
             history.append(event)
             
-            sub_history, action, action_probs, h_glob, c_glob = self.policy(current_node, validity_mask, h_glob, c_glob, recursion_depth - 1, temperature)
+            sub_history, action, action_probs, h_glob, c_glob = self.policy(
+                state,
+                coord,
+                validity_mask,
+                h_glob,
+                c_glob,
+                recursion_depth - 1,
+                temperature,
+                high_level_mask
+            )
             history.extend(sub_history)
             return history, action, action_probs, h_glob, c_glob
-        
-        # Apply validity mask to actor weights
-        event, action, action_probs = self.apply_external_perceptron(features, validity_mask, temperature)
-        history.append(event)
-        return history, action, action_probs, h_glob, c_glob
+        elif high_level_action == 1:
+            # Teleport
+            event, teleport_action, teleport_probs = self.apply_teleport(h_glob, state, temperature = temperature)
+            history.append(event)
+            return history, teleport_action, teleport_probs, h_glob, c_glob
+        else:
+            # External op
+            event, action, action_probs = self.apply_external_perceptron(features, validity_mask, temperature = temperature)
+            history.append(event)
+            return history, action, action_probs, h_glob, c_glob
 
     def step(self, state: ExprNode, coord: tuple[int, ...], env: Symple, h_glob: torch.Tensor, c_glob: torch.Tensor, **policy_kwargs):
         current_node = state.get_node(coord)
-        history, action, _, h_glob, c_glob = self.policy(current_node, env.get_validity_mask(current_node), h_glob, c_glob, **policy_kwargs)
-        # Add reward and coordinates to internal and high-level action history
-        for entry in history[:-1]:
-            entry['reward'] = env.time_penalty  - env.compute_penalty_coefficient * entry['complexity']
+        history, action, _, h_glob, c_glob = self.policy(state, coord, env.get_validity_mask(current_node), h_glob, c_glob, **policy_kwargs)
+        
+        # Add reward and coordinates to all action history
+        for entry in history:
+            entry['reward'] = env.time_penalty - env.compute_penalty_coefficient * entry.get('complexity', 0)
             entry['coordinates'] = coord
 
-        new_state, new_coord, reward, node_count_reduction, done = env.step(state, coord, action)
-        
-        # Add reward and coordinates to external action history
-        history[-1]['reward'] = reward
-        history[-1]['coordinates'] = coord
-        history[-1]['node_count_reduction'] = node_count_reduction
+        if history[-1]['action_type'] == 'teleport':
+            new_coord = state.get_coords()[action]
+            new_state = state
+            done = False
+        else:
+            new_state, new_coord, reward, node_count_reduction, done = env.step(state, coord, action)
+            history[-1]['reward'] = reward
+            history[-1]['node_count_reduction'] = node_count_reduction
         
         return new_state, new_coord, done, history, h_glob, c_glob
 
@@ -329,8 +394,8 @@ class SympleAgent(nn.Module):
         if behavior_policy:
             return self.off_policy_forward(state, env, behavior_policy)
         
-        h_glob = torch.zeros((self.lstm.num_layers, 1, self.global_hidden_size), device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE)
-        c_glob = torch.zeros((self.lstm.num_layers, 1, self.global_hidden_size), device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE)
+        h_glob = torch.zeros((self.lstm.num_layers, 1, self.global_hidden_size), device=self.device, dtype=DEFAULT_DTYPE)
+        c_glob = torch.zeros((self.lstm.num_layers, 1, self.global_hidden_size), device=self.device, dtype=DEFAULT_DTYPE)
         
         # Apply to all nodes in the tree
         state = self.apply_binary_lstm(state)
@@ -362,43 +427,52 @@ class SympleAgent(nn.Module):
 
         current_node = state.get_node(coord)
         validity_mask = env.get_validity_mask(current_node)
-        history, _, target_probs, h_glob, c_glob = self.policy(current_node, validity_mask, h_glob, c_glob, temperature=1.0) # Use own policy as both target and behavior policy
-        history = history[:-1] # Last action is on-policy, ignore it
+        history, action, target_probs, h_glob, c_glob = self.policy(
+            state,
+            coord,
+            validity_mask,
+            h_glob,
+            c_glob,
+            temperature=1.0,
+            high_level_mask= torch.tensor([[1,0,1]], device = self.device, dtype = DEFAULT_DTYPE) # Mask out teleport action
+        )
 
         for entry in history:
-            entry['reward'] = env.time_penalty - (env.compute_penalty_coefficient * entry['complexity'])
+            entry['reward'] = env.time_penalty - (env.compute_penalty_coefficient * entry.get('complexity', 0))
             entry['coordinates'] = coord
-        
 
-        behavior_probs = behavior_policy(state, validity_mask)
-        action = torch.multinomial(torch.tensor(behavior_probs), 1).item()
+        if history[-1]['action_type'] == 'teleport':
+            new_coord = action
+            new_state = state
+            done = False
+        else:
+            behavior_probs = behavior_policy(state, validity_mask)
+            action = torch.multinomial(torch.tensor(behavior_probs), 1).item()
 
-        target_action_prob = target_probs[:,action]
-        behavior_action_prob = behavior_probs[:,action]
-        new_state, new_coord, reward, node_count_reduction, done = env.step(state, coord, action)
-        
-        
-        event = {
-            'action_type': 'external',
-            'action': action,
-            'target_probability': target_action_prob if self.training else target_action_prob.item(),
-            'behavior_probability': behavior_action_prob.detach() if self.training else behavior_action_prob.item(),
-            'reward': reward,
-            'complexity': 0.0,
-            'node_count_reduction': node_count_reduction,
-            'coordinates': coord
-        }
+            target_action_prob = target_probs[:,action]
+            behavior_action_prob = behavior_probs[:,action]
+            new_state, new_coord, reward, node_count_reduction, done = env.step(state, coord, action)
+            
+            event = {
+                'action_type': 'external',
+                'action': action,
+                'target_probability': target_action_prob if self.training else target_action_prob.item(),
+                'behavior_probability': behavior_action_prob.detach() if self.training else behavior_action_prob.item(),
+                'reward': reward,
+                'complexity': 0.0,
+                'node_count_reduction': node_count_reduction,
+                'coordinates': coord
+            }
+            history.append(event)
 
-        history.append(event)
-        
         return new_state, new_coord, done, history, h_glob, c_glob
     
     def off_policy_forward(self, state: ExprNode, env: Symple,
                            behavior_policy: Union[Callable[[ExprNode, tuple[int, ...], Symple], Union[torch.Tensor, List[float]]], Tuple[str, float]]
                            ) -> Tuple[List[Dict], ExprNode]:
         
-        h_glob = torch.zeros((self.lstm.num_layers, 1, self.global_hidden_size), device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE)
-        c_glob = torch.zeros((self.lstm.num_layers, 1, self.global_hidden_size), device=DEFAULT_DEVICE, dtype=DEFAULT_DTYPE)
+        h_glob = torch.zeros((self.lstm.num_layers, 1, self.global_hidden_size), device=self.device, dtype=DEFAULT_DTYPE)
+        c_glob = torch.zeros((self.lstm.num_layers, 1, self.global_hidden_size), device=self.device, dtype=DEFAULT_DTYPE)
         
         
         # Apply to all nodes in the tree
@@ -412,3 +486,7 @@ class SympleAgent(nn.Module):
             history.extend(step_history)
         
         return history, state.reset_tensors()
+
+    def to(self, device: torch.device = None, dtype: torch.dtype = None):
+        self.device = device
+        return super(SympleAgent, self).to(device, dtype)
