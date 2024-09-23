@@ -61,6 +61,19 @@ agent = SympleAgent(
     ffn_n_layers=2,
     lstm_n_layers=2,
 )
+
+# Load the most recent model
+model_files = [f for f in os.listdir(model_save_dir) if f.startswith('model_') and f.endswith('.pth')]
+if model_files:
+    latest_model = max(model_files, key=lambda x: datetime.strptime(x, 'model_%Y%m%d_%H%M%S.pth'))
+    agent.load_state_dict(torch.load(os.path.join(model_save_dir, latest_model)))
+    print(f'Loaded model from: {latest_model}')
+else:
+    print('No previous model found. Starting training from scratch.')
+model_path = os.path.join(model_save_dir, latest_model)
+
+
+
 optimizer = torch.optim.Adam(agent.parameters(), lr=0.001)
 
 # Training loop
@@ -102,7 +115,7 @@ for epoch in range(1, num_epochs + 1):
             # behavior_policy=behavior_policy if epoch <= 20 else None,
             **dict(
                 # time_penalty=-0.02,
-                # min_steps=30,
+                min_steps=30,
             )
         )
         end_time = time.time()
@@ -110,12 +123,6 @@ for epoch in range(1, num_epochs + 1):
         batch_time = end_time - start_time
         total_time += batch_time
         
-        returns.append(avg_return)
-        avg_eval_time = batch_time / batch_size  # Calculate average evaluation time per expression
-        eval_times.append(avg_eval_time)
-        avg_ncr = sum([history['node_count_reduction'] for history in batch_history]) / len(batch_history)
-        
-        print(f"Epoch {epoch}/{num_epochs}, Batch {batch_number_in_epoch}/{n_batches}, Return: {avg_return:.4f}, NCR: {avg_ncr:.4f}, Batch Time: {batch_time:.4f} seconds, Avg Eval Time: {avg_eval_time:.4f} seconds")
 
         # Compute and verify node count reduction
         for input_expr, output_expr, history in zip(
@@ -123,6 +130,7 @@ for epoch in range(1, num_epochs + 1):
         ):
             history['input'] = str(input_expr)
             history['output'] = str(output_expr.to_sympy())
+            history['n_steps'] = len(history['example_history'])
 
             input_node_count = ExprNode.from_sympy(input_expr).node_count()
             output_node_count = output_expr.node_count()
@@ -131,6 +139,13 @@ for epoch in range(1, num_epochs + 1):
             
             assert computed_ncr == history_ncr, f"Warning: Computed NCR ({computed_ncr}) doesn't match history NCR ({history_ncr})"
 
+        returns.append(avg_return)
+        avg_eval_time = batch_time / batch_size  # Calculate average evaluation time per expression
+        eval_times.append(avg_eval_time)
+        avg_ncr = sum([history['node_count_reduction'] for history in batch_history]) / len(batch_history)
+        avg_n_steps = sum([history['n_steps'] for history in batch_history]) / len(batch_history)
+        
+        print(f"Epoch {epoch}/{num_epochs}, Batch {batch_number_in_epoch}/{n_batches}, Return: {avg_return:.4f}, NCR: {avg_ncr:.4f}, Batch Time: {batch_time:.4f} seconds, Avg Eval Time: {avg_eval_time:.4f} seconds, Avg Steps: {avg_n_steps:.4f}")
         # Save batch data
         batch_data = {
             'epoch': epoch,

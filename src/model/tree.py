@@ -114,11 +114,18 @@ class ExprNode(object):
         self.ensure_parenthood()
         return self
     
-    def get_coords(self)->list[tuple[int, ...]]:
+    def get_coords(self, depth: int = inf)->list[tuple[int, ...]]:
         return [()] + (
-            [(0,) + tup for tup in self.a.get_coords()] if self.a is not None else []
+            [(0,) + tup for tup in self.a.get_coords(depth-1)] if self.a is not None and depth > 0 else []
         ) + (
-            [(1,) + tup for tup in self.b.get_coords()] if self.b is not None else []
+            [(1,) + tup for tup in self.b.get_coords(depth-1)] if self.b is not None and depth > 0 else []
+        )
+
+    def get_coords_and_nodes(self, depth: int = inf)->list[tuple[tuple[int, ...], "ExprNode"]]:
+        return [((), self)] + (
+            [((0,) + c, n) for c, n in self.a.get_coords_and_nodes(depth-1)] if self.a is not None and depth > 0 else []
+        ) + (
+            [((1,) + c, n) for c, n in self.b.get_coords_and_nodes(depth-1)] if self.b is not None and depth > 0 else []
         )
 
     def reset_tensors(self)->"ExprNode":
