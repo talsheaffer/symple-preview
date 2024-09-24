@@ -10,7 +10,8 @@ from src.model.environment import TIME_PENALTY, NODE_COUNT_IMPORTANCE_FACTOR, CO
 # Find the most recent JSON file
 json_dir = os.path.join(ROOT_DIR, 'train/training_data')
 json_files = [f for f in os.listdir(json_dir) if f.startswith('training_data_') and f.endswith('.json')]
-latest_json = max(json_files, key=lambda x: datetime.strptime(x, 'training_data_%Y%m%d_%H%M%S.json'))
+sorted_jsons = sorted(json_files, key=lambda x: datetime.strptime(x, 'training_data_%Y%m%d_%H%M%S.json'))
+latest_json = sorted_jsons[-1]
 
 # Parse the latest JSON filename to get the date and time
 date_time_str = latest_json.split('_', 2)[2].rsplit('.', 1)[0]
@@ -116,6 +117,20 @@ plt.close()
 
 print(f"Mean Node Count Reduction: {mean_ncr:.2f}")
 print(f"Standard Deviation of Node Count Reduction: {std_ncr:.2f}")
+
+# Plot average node count reduction over time (batch number)
+avg_ncr_per_batch = [batch['avg_ncr'] for batch in data]
+
+plt.figure(figsize=(10, 5))
+plt.plot(batch_numbers, avg_ncr_per_batch, label='Avg Node Count Reduction')
+plt.title('Average Node Count Reduction vs Batch Number')
+plt.xlabel('Batch Number')
+plt.ylabel('Average Node Count Reduction')
+plt.axhline(y=0, color='k', linestyle='-', linewidth=0.5)
+plt.legend()
+plt.savefig(os.path.join(figures_dir, 'avg_ncr_per_batch.png'))
+
+
 
 
 
