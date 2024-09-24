@@ -117,12 +117,16 @@ plt.close()
 
 print(f"Mean Node Count Reduction: {mean_ncr:.2f}")
 print(f"Standard Deviation of Node Count Reduction: {std_ncr:.2f}")
-
 # Plot average node count reduction over time (batch number)
 avg_ncr_per_batch = [batch['avg_ncr'] for batch in data]
 
+# Calculate moving average
+window_size = 10
+moving_avg_ncr = [sum(avg_ncr_per_batch[max(0, i-window_size):i])/min(i, window_size) for i in range(1, len(avg_ncr_per_batch)+1)]
+
 plt.figure(figsize=(10, 5))
-plt.plot(batch_numbers, avg_ncr_per_batch, label='Avg Node Count Reduction')
+plt.plot(batch_numbers, avg_ncr_per_batch, alpha=0.3, label='Avg Node Count Reduction')
+plt.plot(batch_numbers, moving_avg_ncr, label=f'{window_size}-batch Moving Average')
 plt.title('Average Node Count Reduction vs Batch Number')
 plt.xlabel('Batch Number')
 plt.ylabel('Average Node Count Reduction')
