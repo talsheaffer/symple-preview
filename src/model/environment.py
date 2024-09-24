@@ -7,11 +7,9 @@ from src.utils import iota
 
 import sympy as sp
 
-TIME_PENALTY = -0.002
+TIME_PENALTY = -0.0002
 NODE_COUNT_IMPORTANCE_FACTOR = 1.0
 COMPUTE_PENALTY_COEFFICIENT = 0
-
-
 
 
 

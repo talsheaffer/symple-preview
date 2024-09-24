@@ -62,15 +62,15 @@ agent = SympleAgent(
     lstm_n_layers=2,
 )
 
-# Load the most recent model
-model_files = [f for f in os.listdir(model_save_dir) if f.startswith('model_') and f.endswith('.pth')]
-if model_files:
-    latest_model = max(model_files, key=lambda x: datetime.strptime(x, 'model_%Y%m%d_%H%M%S.pth'))
-    agent.load_state_dict(torch.load(os.path.join(model_save_dir, latest_model)))
-    print(f'Loaded model from: {latest_model}')
-else:
-    print('No previous model found. Starting training from scratch.')
-model_path = os.path.join(model_save_dir, latest_model)
+# # Load the most recent model
+# model_files = [f for f in os.listdir(model_save_dir) if f.startswith('model_') and f.endswith('.pth')]
+# if model_files:
+#     latest_model = max(model_files, key=lambda x: datetime.strptime(x, 'model_%Y%m%d_%H%M%S.pth'))
+#     agent.load_state_dict(torch.load(os.path.join(model_save_dir, latest_model)))
+#     print(f'Loaded model from: {latest_model}')
+# else:
+#     print('No previous model found. Starting training from scratch.')
+# model_path = os.path.join(model_save_dir, latest_model)
 
 
 
@@ -116,6 +116,7 @@ for epoch in range(1, num_epochs + 1):
             **dict(
                 # time_penalty=-0.02,
                 min_steps=30,
+                max_steps=10000,
             )
         )
         end_time = time.time()
