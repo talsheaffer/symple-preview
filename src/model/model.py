@@ -44,10 +44,10 @@ class SympleAgent(nn.Module):
         self.ffn = FFN(self.hidden_size, self.hidden_size, self.hidden_size, n_layers=ffn_n_layers)
         self.teleport_ffn = FFN(self.global_hidden_size + self.hidden_size, self.hidden_size, 1, n_layers=ffn_n_layers)
 
-        # Perceptrons for high-level and internal decisions
-        self.high_level_actor = nn.Linear(self.hidden_size + self.global_hidden_size, 3)  # Changed to 3 for teleport action
-        self.internal_actor = nn.Linear(self.hidden_size + self.global_hidden_size, self.num_internal_ops)
-        self.actor = nn.Linear(self.hidden_size + self.global_hidden_size, self.num_ops)
+        # FFNs for high-level and internal decisions
+        self.high_level_actor = FFN(self.hidden_size + self.global_hidden_size, self.hidden_size, 3, n_layers=ffn_n_layers)  # Changed to 3 for teleport action
+        self.internal_actor = FFN(self.hidden_size + self.global_hidden_size, self.hidden_size, self.num_internal_ops, n_layers=ffn_n_layers)
+        self.actor = FFN(self.hidden_size + self.global_hidden_size, self.hidden_size, self.num_ops, n_layers=ffn_n_layers)
 
         # internal ops and their compute complexity. Including certain compositions of elementary internal ops
         self.ffn_complexity = self.hidden_size**2 * self.ffn.n_layers
@@ -248,9 +248,10 @@ class SympleAgent(nn.Module):
         return event, internal_action
     
     def apply_external_perceptron(self, features: torch.Tensor, validity_mask: torch.Tensor, temperature: Optional[float] = None) -> Tuple[dict, int, torch.Tensor]:
-        valid_actor_weights = self.actor.weight * validity_mask.unsqueeze(1)
-        valid_actor_bias = self.actor.bias * validity_mask
-        logits = validity_mask.log() + F.linear(features, valid_actor_weights, valid_actor_bias)
+        # valid_actor_weights = self.actor.weight * validity_mask.unsqueeze(1)
+        # valid_actor_bias = self.actor.bias * validity_mask
+        # logits = validity_mask.log() + F.linear(features, valid_actor_weights, valid_actor_bias)
+        logits = validity_mask.log() + self.actor(features)
         if temperature is not None:
             target_probs = F.softmax(logits, dim=-1)
             action_probs = F.softmax(logits/temperature, dim=-1)
