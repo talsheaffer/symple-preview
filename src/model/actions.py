@@ -28,15 +28,16 @@ def wrap_action(
     
     def wrapper(expr: ExprNodeBase, coord: tuple[int, ...] = ()) -> Tuple[ExprNode, tuple[int, ...], int]:
         initial_count = expr.get_node(coord).node_count()
-        nodes = expr.get_node(coord).topological_sort(depth)
-        tensors = [(n.hidden, n.cell) for n in nodes]
+        # nodes = expr.get_node(coord).topological_sort(depth)
+        # tensors = [(n.hidden, n.cell) for n in nodes]
         new_expr = expr.apply_at_coord(coord, subclass_wrapper)
         final_count = new_expr.get_node(coord).node_count()
         reduction = initial_count - final_count
-        nodes = new_expr.get_node(coord).topological_sort(depth)
-        for i, n in enumerate(nodes):
-            n.hidden = tensors[i][0]
-            n.cell = tensors[i][1]
+        # nodes = new_expr.get_node(coord).topological_sort(depth)
+        # for i in range(len(tensors)):
+        #     if i < len(nodes):
+        #         nodes[-i-1].hidden = tensors[-i-1][0]
+        #         nodes[-i-1].cell = tensors[-i-1][1]
         return new_expr, coord, reduction
     return wrapper
 

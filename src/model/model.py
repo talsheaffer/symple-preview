@@ -121,7 +121,7 @@ class SympleAgent(nn.Module):
         input.hidden = self.ffn(input.hidden)
         return input
     
-    def apply_binary_lstm(self, input: ExprNode, depth=inf) -> ExprNode:
+    def apply_binary_lstm(self, input: ExprNode, depth: int = inf) -> ExprNode:
         """
         Applies a binary LSTM to the input expression tree recursively.
 
@@ -132,11 +132,17 @@ class SympleAgent(nn.Module):
         Returns:
             ExprNode: The input node with updated hidden and cell states.
         """
+        # if input.hidden is not None:
+            # if all([n.hidden is not None for n in input.topological_sort()]):
+            #     return input
         if depth > 0:
             input.a = self.apply_binary_lstm(input.a, depth=depth - 1) if input.a is not None else None
             input.b = self.apply_binary_lstm(input.b, depth=depth - 1) if input.b is not None else None
             input.ensure_parenthood()
 
+        if input.hidden is not None:
+            return input
+        
         (input.hidden, input.cell) = self.blstm(
             input.arg_hot,
             (
@@ -167,15 +173,17 @@ class SympleAgent(nn.Module):
             input.b = self.apply_ternary_lstm(input.b, depth=depth - 1) if input.b is not None else None
         input.ensure_parenthood()
 
+        # input.hidden = input.hidden if input.hidden is not None else self.tz
+        # input.cell = input.cell if input.cell is not None else self.tz
         (input.hidden, input.cell) = self.tlstm(
             input.arg_hot,
             (
-                input.hidden if input.a is not None else self.tz,
+                input.hidden if input.hidden is not None else self.tz,
                 input.a.hidden if input.a is not None else self.tz,
                 input.b.hidden if input.b is not None else self.tz,
             ),
             (
-                input.cell if input.a is not None else self.tz,
+                input.cell if input.hidden is not None else self.tz,
                 input.a.cell if input.a is not None else self.tz,
                 input.b.cell if input.b is not None else self.tz,
             )
@@ -320,7 +328,11 @@ class SympleAgent(nn.Module):
         history = []
 
         current_node = state.en.get_node(state.coord)
-        features = torch.cat([current_node.hidden, state.h_glob[-1]], dim=-1)
+
+        features = torch.cat([
+            current_node.hidden,
+            state.h_glob[-1]
+        ], dim=-1)
 
         # Decide whether to act, further process the expression, teleport, or finish
         event, high_level_action = self.apply_high_level_perceptron(features, recursion_depth, temperature = temperature, high_level_mask=high_level_mask)
@@ -418,14 +430,15 @@ class SympleAgent(nn.Module):
         c_glob = torch.zeros((self.lstm.num_layers, 1, self.global_hidden_size), device=self.device, dtype=DEFAULT_DTYPE)
         
         state = SympleState(en, (), h_glob, c_glob)
-        # Apply to all nodes in the tree
-        state.en = self.apply_binary_lstm(state.en)
         
         done = False
         history = []
         steps = 0
 
         while steps <= max_steps and not done:
+
+            # (Re-)apply binary LSTM only to new nodes for which hidden states were not learned
+            state.en = self.apply_binary_lstm(state.en)
 
             high_level_mask = torch.tensor(
                 ([[1,1,1,1]] if steps >= min_steps else [[1,1,1,0]]),
@@ -482,6 +495,8 @@ class SympleAgent(nn.Module):
             target_action_prob = target_probs[:,action]
             behavior_action_prob = behavior_probs[:,action]
             state, reward, node_count_reduction = env.step(state, action)
+
+            # Reapply binary LSTM only to new nodes for which hidden states were not learned
             
             event = {
                 'action_type': 'external',
@@ -509,12 +524,13 @@ class SympleAgent(nn.Module):
         
         # Apply to all nodes in the tree
         state = SympleState(en, (), h_glob, c_glob)
-        state.en = self.apply_binary_lstm(state.en)
         done = False
         history = []
         steps = 0
         
         while steps <= max_steps and not done:
+            # Reapply binary LSTM only to new nodes for which hidden states were not learned
+            state.en = self.apply_binary_lstm(state.en)
             high_level_mask= torch.tensor(
                 ([[1,0,1,1]] if steps >= min_steps else [[1,0,1,0]]),
                 device = self.device,
