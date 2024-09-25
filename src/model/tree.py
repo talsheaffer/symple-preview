@@ -138,10 +138,30 @@ class ExprNode(ExprNodeBase):
     def from_sympy(cls, expr: sp.Expr) -> "ExprNode":
         return cls.from_expr_node_base(ExprNodeBase.from_sympy(expr))
     
+    def to_sympy(self) -> sp.Expr:
+        if self.type == ExprNodeType.ADD:
+            return sp.Add(self.left.to_sympy(), self.right.to_sympy(), evaluate=True)
+        elif self.type == ExprNodeType.NEG:
+            return sp.Mul(sp.Integer(-1), self.left.to_sympy(), evaluate=True)
+        elif self.type == ExprNodeType.MUL:
+            return sp.Mul(self.left.to_sympy(), self.right.to_sympy(), evaluate=True)
+        elif self.type == ExprNodeType.INV:
+            return sp.Pow(self.left.to_sympy(), sp.Integer(-1), evaluate=True)
+        elif self.type == ExprNodeType.POW:
+            return sp.Pow(self.left.to_sympy(), self.right.to_sympy(), evaluate=True)
+        elif self.type == ExprNodeType.INT:
+            return sp.Integer(self.arg)
+        elif self.type == ExprNodeType.VAR_X:
+            return sp.Symbol('x')
+        elif self.type == ExprNodeType.VAR_Y:
+            return sp.Symbol('y')
+        elif self.type == ExprNodeType.VAR_Z:
+            return sp.Symbol('z')
+        else:
+            raise ValueError(f"Unsupported ExprNodeType: {self.type}")
+
     @property
     def arg_hot(self):
         return (1 if self.arg == ARG_NULL else self.arg) * F.one_hot(torch.tensor([self.type]), num_classes=VOCAB_SIZE).to(DEFAULT_DEVICE, DEFAULT_DTYPE)
-    
-
 
 
