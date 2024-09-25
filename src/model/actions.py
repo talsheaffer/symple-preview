@@ -12,13 +12,16 @@ depths[ActionType.FACTOR_RIGHT] = 2
 depths[ActionType.FACTOR_LEFT] = 2
 depths[ActionType.REDUCE_DOUBLE_INV] = 0
 depths[ActionType.REDUCE_GROUP_UNIT] = 0
+depths[ActionType.MULTIPLY_ONE] = 2
+depths[ActionType.ADD_ZERO] = 2
+
 
 
 
 def wrap_action(
         action: Callable[[ExprNodeBase], ExprNodeBase],
         depth: int = 0
-) -> Callable[[ExprNodeBase, tuple[int, ...]], Tuple[ExprNode, tuple[int, ...], int, int]]:
+) -> Callable[[ExprNodeBase, tuple[int, ...]], Tuple[ExprNode, tuple[int, ...], int]]:
     
     def subclass_wrapper(expr: ExprNodeBase) -> ExprNode:
         return ExprNode.from_expr_node_base(action(expr))
@@ -34,7 +37,7 @@ def wrap_action(
         for i, n in enumerate(nodes):
             n.hidden = tensors[i][0]
             n.cell = tensors[i][1]
-        return new_expr, coord, reduction, depth
+        return new_expr, coord, reduction
     return wrapper
 
 for action_type, action in ACTIONS.items():

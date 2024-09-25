@@ -46,7 +46,7 @@ class Symple:
         self.num_ops = NUM_OPS
 
     def step(self, state: SympleState, action: int) -> Tuple[SympleState, float, bool]:
-        state.en, state.coord, node_count_reduction = state.en.apply_at_coord(state.coord, OPS_MAP[action].apply)
+        state.en, state.coord, node_count_reduction = OPS_MAP[action].apply(state.en, state.coord)
         
         reward = self.time_penalty + self.node_count_importance_factor * node_count_reduction
         

@@ -38,12 +38,12 @@ class TestSympleAgent(unittest.TestCase):
         self.lstm_n_layers = 2
         self.agent = SympleAgent(self.hidden_size, self.global_hidden_size, lstm_n_layers=self.lstm_n_layers)
         self.env = Symple()
-
+        
     def test_agent_with_simple_expression(self):
         x = sp.Symbol("x")
         expr = sp.expand((x**2 - x + 1) ** 4)
         initial_expr = ExprNode.from_sympy(expr)
-        history, final_state = self.agent(initial_expr, self.env)
+        history, final_state = self.agent(initial_expr)
         self.assertGreater(len(history), 0)
         self.assertIsInstance(history, list)
         self.assertIsInstance(final_state, ExprNode)
@@ -51,8 +51,7 @@ class TestSympleAgent(unittest.TestCase):
     def test_agent_with_complex_expression(self):
         x, y = sp.symbols("x y")
         expr = sp.expand((x**2 - y + 1) ** 4 + (y**2 - x + 1) ** 3)
-        initial_expr = ExprNode.from_sympy(expr)
-        history, final_state = self.agent(initial_expr, self.env)
+        history, final_state = self.agent(expr)
         self.assertGreater(len(history), 0)
         self.assertIsInstance(history, list)
         self.assertIsInstance(final_state, ExprNode)
@@ -60,8 +59,7 @@ class TestSympleAgent(unittest.TestCase):
     def test_agent_with_single_variable_expression(self):
         x = sp.Symbol("x")
         expr = sp.expand(x**10)
-        initial_expr = ExprNode.from_sympy(expr)
-        history, final_state = self.agent(initial_expr, self.env)
+        history, final_state = self.agent(expr)
         self.assertGreater(len(history), 0)
         self.assertIsInstance(history, list)
         self.assertIsInstance(final_state, ExprNode)
@@ -69,7 +67,7 @@ class TestSympleAgent(unittest.TestCase):
     def test_agent_with_no_variable_expression(self):
         expr = sp.expand(42)
         initial_expr = ExprNode.from_sympy(expr)
-        history, final_state = self.agent(initial_expr, self.env)
+        history, final_state = self.agent(initial_expr)
         self.assertGreater(len(history), 0)
         self.assertIsInstance(history, list)
         self.assertIsInstance(final_state, ExprNode)
@@ -82,7 +80,12 @@ class TestSympleAgent(unittest.TestCase):
         def behavior_policy(state, validity_mask):
             return validity_mask.view((1, self.env.num_ops))/validity_mask.sum()
 
-        history, final_state = self.agent(initial_expr, self.env, behavior_policy)
+        history, final_state = self.agent(
+            initial_expr,
+            behavior_policy=behavior_policy,
+            min_steps=20,
+            max_steps=1000
+        )
         self.assertGreater(len(history), 0)
         self.assertIsInstance(history, list)
         self.assertIsInstance(final_state, ExprNode)
@@ -91,9 +94,13 @@ class TestSympleAgent(unittest.TestCase):
 
     def test_agent_with_random_policy(self):
         for expr in expressions:
-            env = Symple(min_steps=20, max_steps=1000)
             initial_expr = ExprNode.from_sympy(expr)
-            history, final_state = self.agent(initial_expr, env, behavior_policy=random_policy)
+            history, final_state = self.agent(
+                initial_expr,
+                behavior_policy=random_policy,
+                min_steps=20,
+                max_steps=1000
+            )
             
             self.assertGreater(len(history), 0)
             self.assertIsInstance(history, list)
@@ -111,9 +118,13 @@ class TestSympleAgent(unittest.TestCase):
 
     def test_agent_with_temperature_policy(self):
         for expr in expressions:
-            env = Symple(min_steps=20, max_steps=1000)
             initial_expr = ExprNode.from_sympy(expr)
-            history, final_state = self.agent(initial_expr, env, behavior_policy=('temperature', 5.0))
+            history, final_state = self.agent(
+                initial_expr,
+                behavior_policy=('temperature', 5.0),
+                min_steps=20,
+                max_steps=1000
+            )
             
             self.assertGreater(len(history), 0)
             self.assertIsInstance(history, list)
@@ -126,4 +137,4 @@ class TestSympleAgent(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+     unittest.main()
