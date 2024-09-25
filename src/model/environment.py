@@ -7,7 +7,6 @@ from src.model.actions import ACTIONS as OPS_MAP
 
 from dataclasses import dataclass
 
-import sympy as sp
 
 TIME_PENALTY = -0.0002
 NODE_COUNT_IMPORTANCE_FACTOR = 1.0
@@ -45,27 +44,19 @@ class Symple:
         self.node_count_importance_factor = node_count_importance_factor
         self.compute_penalty_coefficient = compute_penalty_coefficient
         self.num_ops = NUM_OPS
-    def step(self, expr: ExprNode, current_coord: tuple[int, ...], action: int) -> Tuple[ExprNode, tuple[int, ...], float, bool]:
-        
-        new_expr, new_coord, node_count_reduction = expr.apply_at_coord(current_coord, OPS_MAP[action].apply)
+
+    def step(self, state: SympleState, action: int) -> Tuple[SympleState, float, bool]:
+        state.en, state.coord, node_count_reduction = state.en.apply_at_coord(state.coord, OPS_MAP[action].apply)
         
         reward = self.time_penalty + self.node_count_importance_factor * node_count_reduction
         
+        return state, reward, node_count_reduction
 
-        return new_expr, new_coord, reward, node_count_reduction
-
-    def get_validity_mask(self, expr: ExprNode, coord: tuple[int, ...] = ()) -> torch.Tensor:
-        current_node = expr.get_node(coord)        
+    def get_validity_mask(self, state: SympleState) -> torch.Tensor:
+        current_node = state.en.get_node(state.coord)        
         validity_mask = torch.ones(NUM_OPS, dtype=int)
 
         for op_type, op in OPS_MAP.items():
             validity_mask[op_type] = op.can_apply(current_node)
         
         return validity_mask
-
-    @staticmethod
-    def from_sympy(expr: sp.Expr, **kwargs) -> Tuple[ExprNode, tuple[int, ...], "Symple"]:
-        initial_expr = ExprNode.from_sympy(expr)
-        initial_coord = ()
-        env = Symple(**kwargs)
-        return initial_expr, initial_coord, env
