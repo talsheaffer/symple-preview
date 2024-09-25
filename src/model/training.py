@@ -121,6 +121,7 @@ def train_on_batch(
         behavior_policy: Optional[Callable[[ExprNode, Tuple[int, ...], Symple], Union[torch.Tensor, List[float]]]] = None,
         baseline: Optional[Union[List[float], float]] = None,
         gamma: float = 1.,
+        agent_forward_kwargs: Dict[str, Any] = {},
         **symple_kwargs: Dict[str, Any]
 ) -> Tuple[float, List[Dict[str, Any]], List[ExprNode], torch.Tensor]:
     """
@@ -152,7 +153,7 @@ def train_on_batch(
     for en in expr_nodes:
         env = Symple(**symple_kwargs)
         if behavior_policy:
-            history, output_en = agent(en, env, behavior_policy=behavior_policy)
+            history, output_en = agent(en, env, behavior_policy=behavior_policy, **agent_forward_kwargs)
             output_expr_nodes.append(output_en)
             
             rewards = [step['reward'] for step in history]
@@ -161,7 +162,7 @@ def train_on_batch(
             returns = compute_returns(rewards, target_action_probs, behavior_action_probs, gamma=gamma)
             probs = target_action_probs
         else:
-            history, output_en = agent(en, env)
+            history, output_en = agent(en, env, **agent_forward_kwargs)
             output_expr_nodes.append(output_en)
             rewards = [step['reward'] for step in history]
             returns = compute_returns(rewards, [step['probability'] for step in history], gamma=gamma)

@@ -2,7 +2,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from src.model.environment import NUM_OPS, Symple, SympleState
+from src.model.environment import NUM_OPS, Symple
+from src.model.state import SympleState
 from src.model.ffn import FFN
 from src.model.tree import VOCAB_SIZE, ExprNode
 from src.model.nary_tree_lstm import NaryTreeLSTM
@@ -369,13 +370,6 @@ class SympleAgent(nn.Module):
             return history, action, action_probs, state
         else:
             # Finish
-            event = {
-                'action_type': 'finish',
-                'action': None,
-                'complexity': 0.0,
-                'node_count_reduction': 0.0
-            }
-            history.append(event)
             return history, None, None, state
 
     def step(self, state: SympleState, env: Symple, **policy_kwargs):
@@ -394,12 +388,15 @@ class SympleAgent(nn.Module):
 
         if history[-1]['action_type'] == 'teleport':
             state.coord = state.en.get_coords()[action]
-        elif history[-1]['action_type'] == 'finish':
+        elif history[-1]['action_type'] == 'high_level':
+            assert history[-1]['action'] == 3, "Last action should be high-level only if it is a finish action"
             done = True
         else:
             state, reward, node_count_reduction = env.step(state, action)
             history[-1]['reward'] = reward
             history[-1]['node_count_reduction'] = node_count_reduction
+
+        
         
         return state, done, history
 
@@ -439,7 +436,7 @@ class SympleAgent(nn.Module):
 
             # (Re-)apply binary LSTM only to new nodes for which hidden states were not learned
             state.en = self.apply_binary_lstm(state.en)
-
+            state.nc = state.en.node_count()
             high_level_mask = torch.tensor(
                 ([[1,1,1,1]] if steps >= min_steps else [[1,1,1,0]]),
                 device = self.device,
@@ -531,6 +528,8 @@ class SympleAgent(nn.Module):
         while steps <= max_steps and not done:
             # Reapply binary LSTM only to new nodes for which hidden states were not learned
             state.en = self.apply_binary_lstm(state.en)
+            state.nc = state.en.node_count()
+            
             high_level_mask= torch.tensor(
                 ([[1,0,1,1]] if steps >= min_steps else [[1,0,1,0]]),
                 device = self.device,
