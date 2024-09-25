@@ -112,6 +112,17 @@ class ExprNode(ExprNodeBase):
             self.b.reset_tensors()
         return self
 
+    def topological_sort(self, depth: int = inf) -> list:
+        if depth == 0:
+            return []
+        elif self.left is None and self.right is None:
+            return [self]
+        elif self.right is None:
+            return self.left.topological_sort(depth-1) + [self]
+        elif self.left is None:
+            return self.right.topological_sort(depth-1) + [self]
+        else:
+            return self.left.topological_sort(depth-1) + self.right.topological_sort(depth-1) + [self]
     @classmethod
     def from_expr_node_base(cls, enb: ExprNodeBase) -> "ExprNode":
         en = cls(
