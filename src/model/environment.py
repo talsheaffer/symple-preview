@@ -5,6 +5,8 @@ import torch
 from src.model.tree import ExprNode
 from src.model.actions import ACTIONS as OPS_MAP
 
+from dataclasses import dataclass
+
 import sympy as sp
 
 TIME_PENALTY = -0.0002
@@ -17,6 +19,12 @@ NUM_OPS = len(OPS_MAP)
 
 
 
+@dataclass
+class SympleState:
+    en: ExprNode
+    coord: tuple[int, ...]
+    h_glob: torch.Tensor
+    c_glob: torch.Tensor
 
 # Consider using Open-Ai Gym?
 class Symple:
