@@ -368,10 +368,10 @@ class SympleAgent(nn.Module):
 
     def step(self, state: SympleState, env: Symple, **policy_kwargs):
         done = False
-        current_node = state.en.get_node(state.coord)
+        validity_mask = env.get_validity_mask(state)
         history, action, _, state = self.policy(
             state,
-            env.get_validity_mask(current_node),
+            validity_mask,
             **policy_kwargs
         )
         
@@ -391,7 +391,7 @@ class SympleAgent(nn.Module):
         
         return state, done, history
 
-    def forward(self, expr: Union[Expr, str],
+    def forward(self, expr: Union[ExprNode, Expr, str],
                 env: Symple = Symple(),
                 behavior_policy: Optional[
                     Union[Callable[
@@ -409,7 +409,7 @@ class SympleAgent(nn.Module):
                     Tuple[List[Dict], ExprNode],
                     ExprNode
                 ]:
-        en = ExprNode.from_sympy(expr)
+        en = expr if isinstance(expr, ExprNode) else ExprNode.from_sympy(expr)
         
         if behavior_policy:
             return self.off_policy_forward(en, env, behavior_policy, min_steps, max_steps)
@@ -458,8 +458,7 @@ class SympleAgent(nn.Module):
             else:
                 raise ValueError(f"Invalid behavior policy type: {behavior_policy[0]}")
 
-        current_node = state.en.get_node(state.coord)
-        validity_mask = env.get_validity_mask(current_node)
+        validity_mask = env.get_validity_mask(state)
         history, action, target_probs, state = self.policy(
             state,
             validity_mask,
