@@ -59,7 +59,7 @@ agent = SympleAgent(
     hidden_size = 128,
     num_internal_ops = 7,
     ffn_n_layers=2,
-    lstm_n_layers=2,
+    lstm_n_layers=2
 )
 
 # # Load the most recent model
@@ -104,17 +104,19 @@ for epoch in range(1, num_epochs + 1):
     for i in range(0, batch_size * n_batches, batch_size):
         batch = shuffled_data[i:i+batch_size].apply(ExprNode.from_sympy).tolist()
         
-        # Measure time for training on the batch
-        start_time = time.time()
         overall_batch_num += 1
         batch_number_in_epoch = (i // batch_size) + 1
+
+        # Measure time for training on the batch
+        start_time = time.time()
         avg_return, batch_history, output_expr_nodes, V = train_on_batch_with_value_function_baseline(
-            agent, batch, optimizer,
+            agent,
+            batch,
+            optimizer,
             V=V,
             batch_num=overall_batch_num,
-            # behavior_policy=behavior_policy if epoch <= 20 else None,
-            **dict(
-                # time_penalty=-0.02,
+            # behavior_policy=behavior_policy,
+            agent_forward_kwargs=dict(
                 min_steps=30,
                 max_steps=10000,
             )

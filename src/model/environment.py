@@ -1,11 +1,9 @@
-from typing import Tuple#, Optional
+from typing import Tuple
 
 import torch
 
-from src.model.tree import ExprNode
 from src.model.actions import ACTIONS as OPS_MAP
-
-from dataclasses import dataclass
+from src.model.state import SympleState
 
 
 TIME_PENALTY = -0.0002
@@ -18,14 +16,8 @@ NUM_OPS = len(OPS_MAP)
 
 
 
-@dataclass
-class SympleState:
-    en: ExprNode
-    coord: tuple[int, ...]
-    h_glob: torch.Tensor
-    c_glob: torch.Tensor
 
-# Consider using Open-Ai Gym?
+
 class Symple:
     """
     An RL environment with which the agent should interact. To enrich the set
@@ -46,7 +38,9 @@ class Symple:
         self.num_ops = NUM_OPS
 
     def step(self, state: SympleState, action: int) -> Tuple[SympleState, float, bool]:
-        state.en, state.coord, node_count_reduction = OPS_MAP[action].apply(state.en, state.coord)
+        state, node_count_reduction = OPS_MAP[action].apply(state)
+
+        assert state.nc == state.en.node_count() + node_count_reduction, f"Node count reduction does not match: {state.nc} != {state.en.node_count()} + {node_count_reduction}"
         
         reward = self.time_penalty + self.node_count_importance_factor * node_count_reduction
         
