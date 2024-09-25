@@ -10,7 +10,7 @@ from src.model.nary_tree_lstm import NaryTreeLSTM
 from src.model.model_default import DEFAULT_DEVICE, DEFAULT_DTYPE
 
 from typing import Callable, Union, List, Tuple, Optional, Dict
-
+from sympy import Expr
 from numpy import inf
 
 
@@ -385,16 +385,22 @@ class SympleAgent(nn.Module):
         elif history[-1]['action_type'] == 'finish':
             done = True
         else:
-            state.en, state.coord, reward, node_count_reduction = env.step(state.en, state.coord, action)
+            state, reward, node_count_reduction = env.step(state, action)
             history[-1]['reward'] = reward
             history[-1]['node_count_reduction'] = node_count_reduction
         
         return state, done, history
 
-    def forward(self, state: ExprNode, env: Symple,
+    def forward(self, expr: Union[Expr, str],
+                env: Symple = Symple(),
                 behavior_policy: Optional[
                     Union[Callable[
-                        [ExprNode, tuple[int, ...], Symple], Union[torch.Tensor, List[float]]
+                        [
+                            ExprNode,
+                            tuple[int, ...],
+                            Symple
+                        ],
+                        Union[torch.Tensor, List[float]]
                     ], Tuple[str, float]]
                 ] = None,
                 min_steps: int = 0,
@@ -403,16 +409,18 @@ class SympleAgent(nn.Module):
                     Tuple[List[Dict], ExprNode],
                     ExprNode
                 ]:
+        en = ExprNode.from_sympy(expr)
+        
         if behavior_policy:
-            return self.off_policy_forward(state, env, behavior_policy, min_steps, max_steps)
+            return self.off_policy_forward(en, env, behavior_policy, min_steps, max_steps)
         
         h_glob = torch.zeros((self.lstm.num_layers, 1, self.global_hidden_size), device=self.device, dtype=DEFAULT_DTYPE)
         c_glob = torch.zeros((self.lstm.num_layers, 1, self.global_hidden_size), device=self.device, dtype=DEFAULT_DTYPE)
         
+        state = SympleState(en, (), h_glob, c_glob)
         # Apply to all nodes in the tree
-        state = self.apply_binary_lstm(state)
+        state.en = self.apply_binary_lstm(state.en)
         
-        symple_state = SympleState(state, (), h_glob, c_glob)
         done = False
         history = []
         steps = 0
@@ -424,8 +432,8 @@ class SympleAgent(nn.Module):
                 device = self.device,
                 dtype = DEFAULT_DTYPE
             ) # Mask out finish action
-            symple_state, done, step_history = self.step(
-                symple_state,
+            state, done, step_history = self.step(
+                state,
                 env,
                 high_level_mask = high_level_mask,
             )
@@ -433,7 +441,7 @@ class SympleAgent(nn.Module):
             steps += 1
 
 
-        return history, symple_state.en.reset_tensors()
+        return history, state.en.reset_tensors()
     
     def off_policy_step(self, state: SympleState, env: Symple,
                         behavior_policy: Union[
@@ -474,7 +482,7 @@ class SympleAgent(nn.Module):
 
             target_action_prob = target_probs[:,action]
             behavior_action_prob = behavior_probs[:,action]
-            state.en, state.coord, reward, node_count_reduction = env.step(state.en, state.coord, action)
+            state, reward, node_count_reduction = env.step(state, action)
             
             event = {
                 'action_type': 'external',
@@ -490,7 +498,7 @@ class SympleAgent(nn.Module):
 
         return state, done, history
     
-    def off_policy_forward(self, state: ExprNode, env: Symple,
+    def off_policy_forward(self, en: ExprNode, env: Symple,
                            behavior_policy: Union[Callable[[ExprNode, tuple[int, ...], Symple], Union[torch.Tensor, List[float]]], Tuple[str, float]],
                            min_steps: int = 0,
                            max_steps: int = inf
@@ -501,9 +509,9 @@ class SympleAgent(nn.Module):
         
         
         # Apply to all nodes in the tree
-        state = self.apply_binary_lstm(state)
+        state = SympleState(en, (), h_glob, c_glob)
+        state.en = self.apply_binary_lstm(state.en)
         done = False
-        symple_state = SympleState(state, (), h_glob, c_glob)
         history = []
         steps = 0
         
@@ -513,8 +521,8 @@ class SympleAgent(nn.Module):
                 device = self.device,
                 dtype = DEFAULT_DTYPE
             ) # Mask out teleport action
-            symple_state, done, step_history = self.off_policy_step(
-                symple_state,
+            state, done, step_history = self.off_policy_step(
+                state,
                 env,
                 behavior_policy,
                 high_level_mask = high_level_mask
@@ -523,8 +531,9 @@ class SympleAgent(nn.Module):
             steps += 1
 
         
-        return history, symple_state.en.reset_tensors()
+        return history, state.en.reset_tensors()
 
     def to(self, device: torch.device = None, dtype: torch.dtype = None):
         self.device = device
+        return super(SympleAgent, self).to(device, dtype)
         return super(SympleAgent, self).to(device, dtype)
