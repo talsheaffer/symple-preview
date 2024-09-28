@@ -2,7 +2,7 @@ from typing import Tuple
 
 import torch
 
-from src.model.actions import ACTIONS as OPS_MAP
+from src.model.actions import OPS_MAP
 from src.model.state import SympleState
 
 
@@ -46,11 +46,10 @@ class Symple:
         
         return state, reward, node_count_reduction
 
-    def get_validity_mask(self, state: SympleState) -> torch.Tensor:
-        current_node = state.en.get_node(state.coord)        
+    def get_validity_mask(self, state: SympleState) -> torch.Tensor:    
         validity_mask = torch.ones(NUM_OPS, dtype=int)
 
-        for op_type, op in OPS_MAP.items():
-            validity_mask[op_type] = op.can_apply(current_node)
+        for op_type, op in enumerate(OPS_MAP):
+            validity_mask[op_type] = op.can_apply(state)
         
         return validity_mask

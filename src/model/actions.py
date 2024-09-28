@@ -1,4 +1,4 @@
-from symple.expr.actions import ACTIONS, ActionType
+from symple.expr.actions import ACTIONS, ActionType, Action
 from symple.expr.expr_node import ExprNode as ExprNodeBase
 from typing import Tuple, Callable
 from src.model.tree import ExprNode
@@ -41,6 +41,40 @@ def wrap_action(
         return state, reduction
     
     return wrapper
+def wrap_can_apply(can_apply: Callable[[ExprNodeBase], bool]) -> Callable[[SympleState], bool]:
+    def wrapper(state: SympleState) -> bool:
+        return can_apply(state.en.get_node(state.coord))
+    return wrapper
 
 for action_type, action in ACTIONS.items():
     action.apply = wrap_action(action.apply, depth = depths[action_type])
+    action.can_apply = wrap_can_apply(action.can_apply)
+
+OPS_MAP = list(ACTIONS.values())
+
+
+def can_move_up(state: SympleState) -> bool:
+    return len(state.coord) > 0
+
+def can_move_left(state: SympleState) -> bool:
+    return state.en.get_node(state.coord).left is not None
+
+def can_move_right(state: SympleState) -> bool:
+    return state.en.get_node(state.coord).right is not None
+
+def move_up(state: SympleState) -> Tuple[SympleState, int]:
+    state.coord = state.coord[:-1]
+    return state, 0
+
+def move_left(state: SympleState) -> Tuple[SympleState, int]:
+    state.coord = state.coord + (0,)
+    return state, 0
+
+def move_right(state: SympleState) -> Tuple[SympleState, int]:
+    state.coord = state.coord + (1,)
+    return state, 0
+
+# Add new actions to the OPS_MAP
+OPS_MAP.append(Action(can_move_up, move_up))
+OPS_MAP.append(Action(can_move_left, move_left))
+OPS_MAP.append(Action(can_move_right, move_right))

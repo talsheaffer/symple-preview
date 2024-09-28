@@ -75,7 +75,8 @@ class ExprNode(ExprNodeBase):
         if not coord:
             return self
         else:
-            return self.children[coord[0]].get_node(coord[1:])
+            c = self.children[coord[0]]
+            return c.get_node(coord[1:])
     
     def apply_at_coord(self, coord: tuple[int, ...], fn: callable) -> "ExprNode":
         if not coord:
