@@ -144,11 +144,8 @@ ncrs = [time_step['node_count_reduction'] for batch in data for example in batch
 compute_penalties = [time_step['complexity'] for batch in data for example in batch['history'] for time_step in example['example_history']]
 actions = [ (time_step['action_type'], time_step['action']) for batch in data for example in batch['history'] for time_step in example['example_history']]
 
-# Extract time penalty from the first batch (assuming it's constant across all batches)
-time_penalty = TIME_PENALTY
-
 # Calculate expected rewards
-expected_rewards = [time_penalty - COMPUTE_PENALTY_COEFFICIENT * cp + NODE_COUNT_IMPORTANCE_FACTOR * ncr for cp, ncr in zip(compute_penalties, ncrs)]
+expected_rewards = [TIME_PENALTY * (action[0] != 'finish') - COMPUTE_PENALTY_COEFFICIENT * cp + NODE_COUNT_IMPORTANCE_FACTOR * ncr for cp, ncr, action in zip(compute_penalties, ncrs, actions)]
 
 # Compare expected rewards with actual rewards
 differences = [abs(r - er) for r, er in zip(rewards, expected_rewards)]
