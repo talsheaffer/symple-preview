@@ -1,8 +1,9 @@
 from symple.expr.actions import ACTIONS, ActionType, Action
 from symple.expr.expr_node import ExprNode as ExprNodeBase
-from typing import Tuple, Callable
+from typing import Tuple, Callable, Any
 from src.model.tree import ExprNode
 from src.model.state import SympleState
+import sympy as sp
 
 depths = {key: 1 for key in ACTIONS.keys()}
 depths[ActionType.ASSOCIATE_LEFT] = 2
@@ -16,6 +17,16 @@ depths[ActionType.REDUCE_GROUP_UNIT] = 0
 depths[ActionType.MULTIPLY_ONE] = 2
 depths[ActionType.ADD_ZERO] = 2
 
+def apply_op_and_count(op: Callable[[ExprNode], ExprNode]) -> Callable[[SympleState], Tuple[SympleState, int]]:
+    def wrapper(state: SympleState) -> Tuple[SympleState, int]:
+        initial_count = state.en.node_count()
+        state.en = state.en.apply_at_coord(state.coord, op)
+        final_count = state.en.node_count()
+        reduction = initial_count - final_count
+        return state, reduction
+    return wrapper
+
+
 def wrap_action(
         action: Callable[[ExprNodeBase], ExprNodeBase],
         depth: int = 0
@@ -24,21 +35,7 @@ def wrap_action(
     def subclass_wrapper(expr: ExprNodeBase) -> ExprNode:
         return ExprNode.from_expr_node_base(action(expr))
     
-    def wrapper(state: SympleState) -> Tuple[SympleState, int]:
-        initial_count = (
-            state.en.
-            # get_node(state.coord).
-            node_count()
-        )
-        state.en = state.en.apply_at_coord(state.coord, subclass_wrapper)
-        final_count = (
-            state.en.
-            # get_node(state.coord).
-            node_count()
-        )
-        reduction = initial_count - final_count
-        
-        return state, reduction
+    wrapper = apply_op_and_count(subclass_wrapper)
     
     return wrapper
 def wrap_can_apply(can_apply: Callable[[ExprNodeBase], bool]) -> Callable[[SympleState], bool]:
@@ -78,3 +75,32 @@ def move_right(state: SympleState) -> Tuple[SympleState, int]:
 OPS_MAP.append(Action(can_move_up, move_up))
 OPS_MAP.append(Action(can_move_left, move_left))
 OPS_MAP.append(Action(can_move_right, move_right))
+
+
+sympy_functions = [
+    sp.expand,
+    sp.factor,
+    sp.cancel,
+    # sp.apart,
+    sp.together,
+    # sp.collect,
+    # sp.simplify,
+    # sp.trigsimp,
+    # sp.powsimp
+    # sp.expand_power_exp,
+]
+
+def wrap_sympy_function(sympy_func: Callable[[Any], Any]) -> Callable[[ExprNode], ExprNode]:
+    def wrapper(node: ExprNode) -> ExprNode:
+        sympy_expr = node.to_sympy()
+        result = sympy_func(sympy_expr)
+        return ExprNode.from_sympy(result)
+    return wrapper
+
+def always_applicable(state: SympleState) -> bool:
+    return True
+
+for func in sympy_functions:
+    wrapped_func = wrap_sympy_function(func)
+    OPS_MAP.append(Action(always_applicable, apply_op_and_count(wrapped_func)))
+
