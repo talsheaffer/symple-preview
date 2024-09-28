@@ -77,8 +77,7 @@ class TestSympleAgent(unittest.TestCase):
         expr = sp.expand((x**2 - x + 1) ** 2)
         initial_expr = ExprNode.from_sympy(expr)
 
-        def behavior_policy(state, validity_mask):
-            return validity_mask.view((1, self.env.num_ops))/validity_mask.sum()
+        behavior_policy = random_policy
 
         history, final_state = self.agent(
             initial_expr,
