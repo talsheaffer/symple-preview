@@ -38,14 +38,24 @@ for entry in data:
     returns.append(entry['avg_return'])
     eval_times.append(entry['avg_eval_time'])
 
+# Filter out |return| > 1000 and eval_time > 20
+filtered_batch_numbers = []
+filtered_returns = []
+filtered_eval_times = []
+for bn, ret, et in zip(batch_numbers, returns, eval_times):
+    if abs(ret) <= 1000 and et <= 20:
+        filtered_batch_numbers.append(bn)
+        filtered_returns.append(ret)
+        filtered_eval_times.append(et)
+
 # Create figures subfolder if it doesn't exist
 figures_dir = os.path.join(ROOT_DIR, 'train', 'figures')
 os.makedirs(figures_dir, exist_ok=True)
 
 # Plot the return history
 plt.figure(figsize=(10, 5))
-plt.plot(batch_numbers, returns)
-plt.title('Average Return vs Batch Number')
+plt.plot(filtered_batch_numbers, filtered_returns)
+plt.title('Average Return vs Batch Number (|Return| <= 1000)')
 plt.xlabel('Batch Number')
 plt.ylabel('Average Return')
 plt.axhline(y=0, color='k', linestyle='-', linewidth=0.5)
@@ -54,8 +64,8 @@ plt.close()
 
 # Plot the evaluation time history
 plt.figure(figsize=(10, 5))
-plt.plot(batch_numbers, eval_times)
-plt.title('Average Evaluation Time per Expression vs Batch Number')
+plt.plot(filtered_batch_numbers, filtered_eval_times)
+plt.title('Average Evaluation Time per Expression vs Batch Number (Eval Time <= 20s)')
 plt.xlabel('Batch Number')
 plt.ylabel('Average Evaluation Time (seconds)')
 plt.savefig(os.path.join(figures_dir, 'eval_time_history.png'))
@@ -66,15 +76,15 @@ fig, ax1 = plt.subplots(figsize=(12, 6))
 
 ax1.set_xlabel('Batch Number')
 ax1.set_ylabel('Average Return', color='blue')
-ax1.plot(batch_numbers, returns, color='blue', label='Return')
+ax1.plot(filtered_batch_numbers, filtered_returns, color='blue', label='Return')
 ax1.tick_params(axis='y', labelcolor='blue')
 
 ax2 = ax1.twinx()
 ax2.set_ylabel('Average Evaluation Time (seconds)', color='red')
-ax2.plot(batch_numbers, eval_times, color='red', label='Avg Eval Time')
+ax2.plot(filtered_batch_numbers, filtered_eval_times, color='red', label='Avg Eval Time')
 ax2.tick_params(axis='y', labelcolor='red')
 
-plt.title('Average Return and Evaluation Time vs Batch Number')
+plt.title('Average Return and Evaluation Time vs Batch Number (|Return| <= 1000, Eval Time <= 20s)')
 fig.legend(loc='upper right', bbox_to_anchor=(1,1), bbox_transform=ax1.transAxes)
 
 plt.axhline(y=0, color='k', linestyle='-', linewidth=0.5)
@@ -84,30 +94,34 @@ plt.close()
 
 # New plot: Moving average of return
 window_size = 10
-moving_avg = [sum(returns[max(0, i-window_size):i])/min(i, window_size) for i in range(1, len(returns)+1)]
+moving_avg = [sum(filtered_returns[max(0, i-window_size):i])/min(i, window_size) for i in range(1, len(filtered_returns)+1)]
 
 plt.figure(figsize=(10, 5))
-plt.plot(batch_numbers, returns, alpha=0.3, label='Raw Return')
-plt.plot(batch_numbers, moving_avg, label=f'{window_size}-batch Moving Average')
-plt.title(f'Raw Return and {window_size}-batch Moving Average vs Batch Number')
+plt.plot(filtered_batch_numbers, filtered_returns, alpha=0.3, label='Raw Return')
+plt.plot(filtered_batch_numbers, moving_avg, label=f'{window_size}-batch Moving Average')
+plt.title(f'Raw Return and {window_size}-batch Moving Average vs Batch Number (|Return| <= 1000)')
 plt.xlabel('Batch Number')
 plt.ylabel('Return')
 plt.legend()
+plt.ylim(min(moving_avg), max(moving_avg))  # Set y-axis range based on moving average
 plt.savefig(os.path.join(figures_dir, 'return_moving_average.png'))
 plt.close()
-
-
 
 # Calculate true mean node count reduction
 true_ncr = [example['node_count_reduction'] for batch in data for example in batch['history']]
 
-mean_ncr = np.mean(true_ncr)
-std_ncr = np.std(true_ncr)
+# Remove outliers
+ncr_threshold = 150
+true_ncr_filtered = [ncr for ncr in true_ncr if abs(ncr) <= ncr_threshold]
+print(f"Percent of recorded NCRs removed: {(len(true_ncr) - len(true_ncr_filtered)) / len(true_ncr) * 100:.2f}%")
+
+mean_ncr = np.mean(true_ncr_filtered)
+std_ncr = np.std(true_ncr_filtered)
 
 # Plot histogram of true node count reduction
 plt.figure(figsize=(10, 5))
-plt.hist(true_ncr, bins=50, edgecolor='black')
-plt.title('Distribution of True Node Count Reduction')
+plt.hist(true_ncr_filtered, bins=50, edgecolor='black')
+plt.title(f'Distribution of True Node Count Reduction (|NCR| <= {ncr_threshold})')
 plt.xlabel('Node Count Reduction')
 plt.ylabel('Frequency')
 plt.axvline(mean_ncr, color='r', linestyle='dashed', linewidth=2, label=f'Mean: {mean_ncr:.2f}\nStd: {std_ncr:.2f}')
@@ -117,26 +131,28 @@ plt.close()
 
 print(f"Mean Node Count Reduction: {mean_ncr:.2f}")
 print(f"Standard Deviation of Node Count Reduction: {std_ncr:.2f}")
+
 # Plot average node count reduction over time (batch number)
 avg_ncr_per_batch = [batch['avg_ncr'] for batch in data]
 
+# Remove outliers
+avg_ncr_per_batch_filtered = [ncr if abs(ncr) <= 1000 else np.nan for ncr in avg_ncr_per_batch]
+
 # Calculate moving average
 window_size = 10
-moving_avg_ncr = [sum(avg_ncr_per_batch[max(0, i-window_size):i])/min(i, window_size) for i in range(1, len(avg_ncr_per_batch)+1)]
+moving_avg_ncr = [np.nanmean(avg_ncr_per_batch_filtered[max(0, i-window_size):i]) for i in range(1, len(avg_ncr_per_batch_filtered)+1)]
 
 plt.figure(figsize=(10, 5))
-plt.plot(batch_numbers, avg_ncr_per_batch, alpha=0.3, label='Avg Node Count Reduction')
+plt.plot(batch_numbers, avg_ncr_per_batch_filtered, alpha=0.3, label='Avg Node Count Reduction')
 plt.plot(batch_numbers, moving_avg_ncr, label=f'{window_size}-batch Moving Average')
-plt.title('Average Node Count Reduction vs Batch Number')
+plt.title('Average Node Count Reduction vs Batch Number (|NCR| <= 1000)')
 plt.xlabel('Batch Number')
 plt.ylabel('Average Node Count Reduction')
 plt.axhline(y=0, color='k', linestyle='-', linewidth=0.5)
 plt.legend()
+plt.ylim(min(moving_avg_ncr), max(moving_avg_ncr))  # Set y-axis range based on moving average
 plt.savefig(os.path.join(figures_dir, 'avg_ncr_per_batch.png'))
-
-
-
-
+plt.close()
 
 # Extract rewards, node count reductions, and compute penalties
 rewards = [time_step['reward'] for batch in data for example in batch['history'] for time_step in example['example_history']]
@@ -157,7 +173,6 @@ avg_difference = sum(differences) / len(differences)
 
 print(f"Maximum difference between expected and actual rewards: {max_difference:.6f}")
 print(f"Average difference between expected and actual rewards: {avg_difference:.6f}")
-
 
 # Create a dictionary to store differences for each action type
 action_differences = {}
@@ -193,8 +208,6 @@ for action, avg_diff in sorted_actions:
 top_10_actions = sorted_actions[:10]
 action_names = [f"{action[0]}: {action[1]}" for action, _ in top_10_actions]
 avg_diffs = [avg_diff for _, avg_diff in top_10_actions]
-
-
 
 # Filter external actions
 external_actions = [action[1] for action in actions if action[0] not in ['high_level', 'internal']]
