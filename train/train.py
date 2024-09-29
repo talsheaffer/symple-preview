@@ -74,7 +74,16 @@ agent = SympleAgent(
 
 
 
-optimizer = torch.optim.Adam(agent.parameters(), lr=0.001)
+# Define learning rate schedule
+initial_lr = 0.001
+lr_decay_factor = 0.9
+
+# Initialize Adam optimizer
+optimizer = torch.optim.Adam(
+    agent.parameters(),
+    lr=initial_lr,
+    weight_decay = 0.001
+)
 
 # Training loop
 num_epochs = 30
@@ -95,6 +104,12 @@ V = torch.zeros(1, device=agent.device)
 overall_batch_num = 0
 
 for epoch in range(1, num_epochs + 1):
+    # Update learning rate based on epoch
+    if epoch < 30:
+        current_lr = initial_lr * (lr_decay_factor ** (epoch - 1))
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = current_lr
+
     # Shuffle the dataset
     shuffled_data = df['expr'].sample(frac=1).reset_index(drop=True)
     n_batches = len(shuffled_data) // batch_size
