@@ -1,6 +1,6 @@
 from symple.expr.actions import ACTIONS, ActionType, Action
 from symple.expr.expr_node import ExprNode as ExprNodeBase
-from typing import Tuple, Callable, Any
+from typing import Tuple, Callable, Any, Optional
 from src.model.tree import ExprNode
 from src.model.state import SympleState
 import sympy as sp
@@ -92,12 +92,37 @@ sympy_functions = [
     # sp.expand_power_exp,
 ]
 
+def find_match(node: ExprNode, node_to_match: ExprNode) -> Optional[ExprNode]:
+    if node == node_to_match:
+        return node
+    if node.left is not None:
+        left_match = find_match(node.left, node_to_match)
+        if left_match is not None:
+            return left_match
+    if node.right is not None:
+        right_match = find_match(node.right, node_to_match)
+        if right_match is not None:
+            return right_match
+    return None
+
+def substitute_matches(old_node: ExprNode, new_node: ExprNode) -> ExprNode:
+    node = find_match(old_node, new_node)
+    if node is not None:
+        return node
+    else:
+        new_node.left = substitute_matches(old_node, new_node.left) if new_node.left is not None else None
+        new_node.right = substitute_matches(old_node, new_node.right) if new_node.right is not None else None
+        return new_node
+
+
 def wrap_sympy_function(sympy_func: Callable[[Any], Any]) -> Callable[[SympleState], Tuple[SympleState, int]]:
     def wrapper(state: SympleState) -> Tuple[SympleState, int]:
         initial_count = state.node_count()
-        sympy_expr = state.to_sympy(state.current_node)
+        old_node = state.current_node
+        sympy_expr = state.to_sympy(old_node)
         result = sympy_func(sympy_expr)
         new_node = state.Expr_Node_from_sympy(result)
+        new_node = substitute_matches(old_node, new_node)
         state.substitute_current_node(new_node)
         final_count = state.node_count()
         reduction = (initial_count - final_count) #* state.count_symbol()
