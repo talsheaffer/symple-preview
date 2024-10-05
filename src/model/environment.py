@@ -40,7 +40,7 @@ class Symple:
     def step(self, state: SympleState, action: int) -> Tuple[SympleState, float, bool]:
         state, node_count_reduction = OPS_MAP[action].apply(state)
 
-        assert state.nc == state.en.node_count() + node_count_reduction, f"Node count reduction does not match: {state.nc} != {state.en.node_count()} + {node_count_reduction}"
+        assert state.nc == state.node_count() + node_count_reduction, f"Node count reduction does not match: {state.nc} != {state.node_count()} + {node_count_reduction}"
         
         reward = self.time_penalty + self.node_count_importance_factor * node_count_reduction
         

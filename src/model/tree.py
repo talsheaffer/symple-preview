@@ -3,11 +3,13 @@ import torch
 import torch.nn.functional as F
 from numpy import inf
 
+from typing import List, Tuple
 
 
 from src.model.model_default import DEFAULT_DEVICE, DEFAULT_DTYPE
 from symple.expr.expr_node import ExprNode as ExprNodeBase, ARG_NULL, ExprNodeType
-VOCAB_SIZE = len(ExprNodeType)
+SYMBOL_VOCAB_SIZE = 20
+VOCAB_SIZE = len(ExprNodeType) + SYMBOL_VOCAB_SIZE
 
 
 class ExprNode(ExprNodeBase):
@@ -15,13 +17,13 @@ class ExprNode(ExprNodeBase):
         self,
         type: int,
         arg: int = ARG_NULL,
-        a: "ExprNode" = None,
-        b: "ExprNode" = None,
+        left: "ExprNode" = None,
+        right: "ExprNode" = None,
         p: "ExprNode" = None,
         hidden: torch.Tensor = None,
         cell: torch.Tensor = None,
     ) -> None:
-        super(ExprNode, self).__init__(type, arg, a, b)
+        super(ExprNode, self).__init__(type, arg, left, right)
         if self.left is not None:
             self.left.p = self
         if self.right is not None:
@@ -89,6 +91,24 @@ class ExprNode(ExprNodeBase):
             raise ValueError(f"Invalid coordinate {coord}")
         self.ensure_parenthood()
         return self
+    
+    def substitute(self, en_to_replace: "ExprNode", en_to_replace_with: "ExprNode")->"ExprNode":
+        if self == en_to_replace:
+            return en_to_replace_with
+        else:
+            self.left = self.left.substitute(en_to_replace, en_to_replace_with) if self.left is not None else None
+            self.right = self.right.substitute(en_to_replace, en_to_replace_with) if self.right is not None else None
+            return self
+    
+    def matches(self, en: "ExprNode", depth: int = inf)->List[Tuple[int, ...]]:
+        if self == en:
+            return [()]
+        else:
+            return (
+                [(0,) + tup for tup in self.a.matches(en, depth-1)] if self.a is not None and depth > 0 else []
+            ) + (
+                [(1,) + tup for tup in self.b.matches(en, depth-1)] if self.b is not None and depth > 0 else []
+            )
     
     def get_coords(self, depth: int = inf)->list[tuple[int, ...]]:
         return [()] + (
@@ -164,5 +184,17 @@ class ExprNode(ExprNodeBase):
     @property
     def arg_hot(self):
         return (1 if self.arg == ARG_NULL else self.arg) * F.one_hot(torch.tensor([self.type]), num_classes=VOCAB_SIZE).to(DEFAULT_DEVICE, DEFAULT_DTYPE)
+    
+    
 
 
+class SymbolNode(ExprNode):
+    def __init__(self, name: str, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.name = name
+
+    def __str__(self) -> str:
+        return self.name
+
+    def __repr__(self) -> str:
+        return self.name

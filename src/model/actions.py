@@ -19,10 +19,10 @@ depths[ActionType.ADD_ZERO] = 2
 
 def apply_op_and_count(op: Callable[[ExprNode], ExprNode]) -> Callable[[SympleState], Tuple[SympleState, int]]:
     def wrapper(state: SympleState) -> Tuple[SympleState, int]:
-        initial_count = state.en.node_count()
+        initial_count = state.node_count()
         state.en = state.en.apply_at_coord(state.coord, op)
-        final_count = state.en.node_count()
-        reduction = initial_count - final_count
+        final_count = state.node_count()
+        reduction = (initial_count - final_count)# * state.count_symbol()
         return state, reduction
     return wrapper
 
@@ -76,25 +76,32 @@ OPS_MAP.append(Action(can_move_up, move_up))
 OPS_MAP.append(Action(can_move_left, move_left))
 OPS_MAP.append(Action(can_move_right, move_right))
 
+# Add sympy functions to the OPS_MAP
+
 
 sympy_functions = [
     sp.expand,
     sp.factor,
     sp.cancel,
-    # sp.apart,
     sp.together,
+    # sp.apart,
     # sp.collect,
-    # sp.simplify,
+    sp.simplify,
     # sp.trigsimp,
     # sp.powsimp
     # sp.expand_power_exp,
 ]
 
-def wrap_sympy_function(sympy_func: Callable[[Any], Any]) -> Callable[[ExprNode], ExprNode]:
-    def wrapper(node: ExprNode) -> ExprNode:
-        sympy_expr = node.to_sympy()
+def wrap_sympy_function(sympy_func: Callable[[Any], Any]) -> Callable[[SympleState], Tuple[SympleState, int]]:
+    def wrapper(state: SympleState) -> Tuple[SympleState, int]:
+        initial_count = state.node_count()
+        sympy_expr = state.to_sympy(state.current_node)
         result = sympy_func(sympy_expr)
-        return ExprNode.from_sympy(result)
+        new_node = state.Expr_Node_from_sympy(result)
+        state.substitute_current_node(new_node)
+        final_count = state.node_count()
+        reduction = (initial_count - final_count) #* state.count_symbol()
+        return state, reduction
     return wrapper
 
 def always_applicable(state: SympleState) -> bool:
@@ -102,5 +109,43 @@ def always_applicable(state: SympleState) -> bool:
 
 for func in sympy_functions:
     wrapped_func = wrap_sympy_function(func)
-    OPS_MAP.append(Action(always_applicable, apply_op_and_count(wrapped_func)))
+    OPS_MAP.append(Action(always_applicable, wrapped_func))
+
+
+
+# Add SympleState actions to the OPS_MAP
+
+def can_declare_new_symbol(state: SympleState) -> bool:
+    return state.can_declare_symbol()
+
+def declare_new_symbol(state: SympleState) -> Tuple[SympleState, int]:
+    state.declare_new_symbol()
+    return state, 0
+
+def can_switch_to_sub_state(state: SympleState) -> bool:
+    return state.can_switch_to_sub_state()
+
+def switch_to_sub_state(state: SympleState) -> Tuple[SympleState, int]:
+    state.switch_to_sub_state()
+    return state, 0
+
+def can_revert_to_primary_state(state: SympleState) -> bool:
+    return state.can_revert_to_primary_state()
+
+def revert_to_primary_state(state: SympleState) -> Tuple[SympleState, int]:
+    state.revert_to_primary_state()
+    return state, 0
+
+def can_evaluate_symbol(state: SympleState) -> bool:
+    return state.can_evaluate_symbol()
+
+def evaluate_symbol(state: SympleState) -> Tuple[SympleState, int]:
+    state.evaluate_symbol()
+    return state, 0
+
+OPS_MAP.append(Action(can_declare_new_symbol, declare_new_symbol))
+OPS_MAP.append(Action(can_switch_to_sub_state, switch_to_sub_state))
+OPS_MAP.append(Action(can_revert_to_primary_state, revert_to_primary_state))
+OPS_MAP.append(Action(can_evaluate_symbol, evaluate_symbol))
+
 

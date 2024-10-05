@@ -523,7 +523,7 @@ class SympleAgent(nn.Module):
 
         return self.off_policy_step_from_probs(state, env, target_probs, behavior_probs)
 
-    def forward(self, expr: Union[ExprNode, Expr, str],
+    def forward(self, expr: Union[SympleState, Expr, str],
                 env: Symple = Symple(),
                 behavior_policy: Optional[
                     Union[Callable[
@@ -539,7 +539,7 @@ class SympleAgent(nn.Module):
                 max_steps: int = inf
                 ) -> Union[
                     Tuple[List[Dict], ExprNode],
-                    ExprNode
+                    SympleState
                 ]:
         """
         Performs a forward pass through the model.
@@ -554,20 +554,19 @@ class SympleAgent(nn.Module):
         Returns:
             Union[Tuple[List[Dict], ExprNode], ExprNode]: The history of events and the final expression node, or just the final expression node.
         """
-        en = expr if isinstance(expr, ExprNode) else ExprNode.from_sympy(expr)
-        
-        if behavior_policy:
-            return self.off_policy_forward(en, env, behavior_policy, min_steps, max_steps)
+        if isinstance(expr, (str, Expr)):
+            state = SympleState.from_sympy(expr)
+        elif isinstance(expr, SympleState):
+            state = expr
+        else:
+            raise ValueError(f"Invalid input type: {type(expr)}")
         
         # Initialize global LSTM states
-        h_glob = torch.zeros((self.lstm.num_layers, 1, self.global_hidden_size), device=self.device, dtype=DEFAULT_DTYPE)
-        c_glob = torch.zeros((self.lstm.num_layers, 1, self.global_hidden_size), device=self.device, dtype=DEFAULT_DTYPE)
+        state.h_glob = torch.zeros((self.lstm.num_layers, 1, self.global_hidden_size), device=self.device, dtype=DEFAULT_DTYPE)
+        state.c_glob = torch.zeros((self.lstm.num_layers, 1, self.global_hidden_size), device=self.device, dtype=DEFAULT_DTYPE)
         
-        # Initialize coordinate tuple
-        coord = ()
-
-        # Initialize state
-        state = SympleState(en, coord, h_glob, c_glob)
+        if behavior_policy:
+            return self.off_policy_forward(state, env, behavior_policy, min_steps, max_steps)
         
         history = []
         steps = 0
@@ -576,7 +575,7 @@ class SympleAgent(nn.Module):
         while steps <= max_steps and not done:
             # (Re-)apply binary LSTM only to new nodes for which hidden states were not learned
             state.en = self.apply_binary_lstm(state.en)
-            state.nc = state.en.node_count()
+            state.nc = state.node_count()
 
             # Take step
             state, done, event = self.step(
@@ -587,13 +586,14 @@ class SympleAgent(nn.Module):
             history.append(event)
             steps += 1
 
-        return history, state.en.reset_tensors()
+        state.finish()
+        return history, state
     
-    def off_policy_forward(self, en: ExprNode, env: Symple,
+    def off_policy_forward(self, state: SympleState, env: Symple,
                            behavior_policy: Union[Callable[[ExprNode, tuple[int, ...], Symple], Tuple[torch.Tensor, torch.Tensor, torch.Tensor]], Tuple[str, float]],
                            min_steps: int = 0,
                            max_steps: int = inf
-                           ) -> Tuple[List[Dict], ExprNode]:
+                           ) -> Tuple[List[Dict], SympleState]:
         """
         Performs an off-policy forward pass through the model.
 
@@ -607,10 +607,6 @@ class SympleAgent(nn.Module):
         Returns:
             Tuple[List[Dict], ExprNode]: The history of events and the final expression node.
         """
-        h_glob = torch.zeros((self.lstm.num_layers, 1, self.global_hidden_size), device=self.device, dtype=DEFAULT_DTYPE)
-        c_glob = torch.zeros((self.lstm.num_layers, 1, self.global_hidden_size), device=self.device, dtype=DEFAULT_DTYPE)
-        
-        state = SympleState(en, (), h_glob, c_glob)
         done = False
         history = []
         steps = 0
@@ -618,7 +614,7 @@ class SympleAgent(nn.Module):
         while steps <= max_steps and not done:
             # Reapply binary LSTM only to new nodes for which hidden states were not learned
             state.en = self.apply_binary_lstm(state.en)
-            state.nc = state.en.node_count()
+            state.nc = state.node_count()
             
             if isinstance(behavior_policy, tuple):
                 if behavior_policy[0] == 'temperature':
@@ -648,7 +644,8 @@ class SympleAgent(nn.Module):
             history.append(event)
             steps += 1
 
-        return history, state.en.reset_tensors()
+        state.finish()
+        return history, state
 
     def to(self, device: torch.device = None, dtype: torch.dtype = None):
         self.device = device

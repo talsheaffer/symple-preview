@@ -1,14 +1,280 @@
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Optional, Union, Dict, Tuple
+from collections import deque
 
-from src.model.tree import ExprNode
+from src.model.tree import ExprNode, SymbolNode, SYMBOL_VOCAB_SIZE, VOCAB_SIZE
+from symple.expr.expr_node import ExprNodeType
+
+import sympy as sp
 
 from torch import Tensor
 
+
+class SymbolManager(dict):
+    def __init__(self):
+        super().__init__()
+        self.next_id = VOCAB_SIZE - SYMBOL_VOCAB_SIZE
+        self.available = deque()
+
+    def __getitem__(self, key):
+        if key not in self:
+            assert self.can_declare_symbol(), f"Cannot assign more than {SYMBOL_VOCAB_SIZE} symbols"
+            if self.available:
+                super().__setitem__(key, self.available.popleft())
+            else:
+                super().__setitem__(key, self.next_id)
+                self.next_id += 1
+        return super().__getitem__(key)
+
+    def __delitem__(self, key):
+        if key in self:
+            self.available.append(self[key])
+            super().__delitem__(key)
+
+    def can_declare_symbol(self) -> bool:
+        return len(self) < SYMBOL_VOCAB_SIZE
+
+
 @dataclass
 class SympleState:
-    en: ExprNode
-    coord: tuple[int, ...]
-    h_glob: Tensor
-    c_glob: Tensor
+    en: ExprNode = None 
+    coord: tuple[int, ...] = ()
+    h_glob: Tensor = None
+    c_glob: Tensor = None
+    symbols: SymbolManager = field(default_factory=SymbolManager)
+    sub_states: Dict[str, Tuple[SymbolNode, ExprNode, Tensor, Tensor]] = field(default_factory=dict)
+    primary_state: Tuple[ExprNode, Tensor, Tensor] = field(default_factory=lambda: (None, None, None))
+    current_name: Optional[str] = None
     nc: Optional[int] = None
+
+    def Expr_Node_from_sympy(self, expr: Union[str, sp.Expr], evaluate: bool = True) -> ExprNode:
+        if isinstance(expr, str):
+            expr = sp.sympify(expr, evaluate=evaluate)
+
+        if isinstance(expr, sp.Add):
+            left = self.Expr_Node_from_sympy(expr.args[0], evaluate=evaluate)
+            right = self.Expr_Node_from_sympy(sp.Add(*expr.args[1:], evaluate=evaluate), evaluate=evaluate)
+            return ExprNode(ExprNodeType.ADD, left=left, right=right)
+
+        elif isinstance(expr, sp.Mul):
+            left = self.Expr_Node_from_sympy(expr.args[0], evaluate=evaluate)
+            right = self.Expr_Node_from_sympy(sp.Mul(*expr.args[1:], evaluate=evaluate), evaluate=evaluate)
+            if left.type == ExprNodeType.INT:
+                if left.arg == 1:
+                    return right
+                elif left.arg == -1:
+                    return ExprNode(ExprNodeType.NEG, left=right)
+            return ExprNode(ExprNodeType.MUL, left=left, right=right)
+
+        elif isinstance(expr, sp.Pow):
+            if expr.exp == -1:
+                return ExprNode(ExprNodeType.INV, left=self.Expr_Node_from_sympy(expr.base))
+            
+            left = self.Expr_Node_from_sympy(expr.base, evaluate=evaluate)
+            right = self.Expr_Node_from_sympy(expr.exp, evaluate=evaluate)
+            return ExprNode(ExprNodeType.POW, left=left, right=right)
+
+        elif isinstance(expr, (sp.Rational, int)):
+            if isinstance(expr, (sp.Integer, int)):
+                expr = ExprNode(ExprNodeType.INT, int(expr))
+                if expr.arg < 0:
+                    expr.arg = -expr.arg
+                    return ExprNode(ExprNodeType.NEG, left=expr)
+                return expr
+            
+            left = self.Expr_Node_from_sympy(expr.p, evaluate=evaluate)
+            right = self.Expr_Node_from_sympy(expr.q, evaluate=evaluate)
+            right_inv = ExprNode(ExprNodeType.INV, left=right)
+            return ExprNode(ExprNodeType.MUL, left=left, right=right_inv)
+        
+        elif expr.is_Symbol:
+            return SymbolNode(
+                expr.name,
+                self.symbols[expr.name]
+            )
+        else:
+            raise ValueError(f"Unsupported expression: {expr}")
+
+    @classmethod
+    def from_sympy(cls, expr: Union[str, sp.Expr], **init_kwargs) -> "SympleState":
+        state = SympleState(**init_kwargs)
+        state.en = state.Expr_Node_from_sympy(expr)
+        state.primary_state = (state.en, state.h_glob, state.c_glob)
+        return state
+
+    def to_sympy(self, node: Optional[ExprNode] = None) -> sp.Expr:
+        if node is None:
+            node = self.en
+        if node.type == ExprNodeType.ADD:
+            return sp.Add(self.to_sympy(node.left), self.to_sympy(node.right))
+        elif node.type == ExprNodeType.NEG:
+            return sp.Mul(sp.Integer(-1), self.to_sympy(node.left))
+        elif node.type == ExprNodeType.MUL:
+            return sp.Mul(self.to_sympy(node.left), self.to_sympy(node.right))
+        elif node.type == ExprNodeType.INV:
+            return sp.Pow(self.to_sympy(node.left), sp.Integer(-1))
+        elif node.type == ExprNodeType.POW:
+            return sp.Pow(self.to_sympy(node.left), self.to_sympy(node.right))
+        elif node.type == ExprNodeType.INT:
+            return sp.Integer(node.arg)
+        elif node.type in self.symbols.values():
+            name = [name for name, type_ in self.symbols.items() if type_ == node.type][0]
+            return sp.Symbol(name)
+        else:
+            raise ValueError(f"Unsupported ExprNodeType: {node.type}")
+
+    def substitute(self, node: ExprNode, new_node: ExprNode) -> None:
+        self.en = self.en.substitute(node, new_node)
+        for name, (n, sub_en, h, c) in self.sub_states.items():
+            self.sub_states[name] = (n, sub_en.substitute(node, new_node), h, c)
+        if self.current_name is not None:
+            self.primary_state = (self.primary_state[0].substitute(node, new_node), *self.primary_state[1:])
+
+    @property
+    def current_node(self) -> ExprNode:
+        return self.en.get_node(self.coord)
+    
+    def substitute_current_node(self, new_node: ExprNode) -> None:
+        self.en = self.en.apply_at_coord(self.coord, lambda x: new_node)
+
+    
+    def update(self) -> None:
+        name = self.current_name
+        if name is None:
+            self.primary_state = (self.en, self.h_glob, self.c_glob)
+        elif name in self.sub_states.keys():
+            self.sub_states[name] = (self.sub_states[name][0], self.en, self.h_glob, self.c_glob)
+        else:
+            raise ValueError(f"Symbol {name} not found")
+
+    def can_declare_symbol(self) -> bool:
+        return self.symbols.can_declare_symbol()
+    
+    def declare_new_symbol(self, name: Optional[str] = None) -> int:
+        if name is None:
+            name = '_'
+            while name in self.symbols:
+                name += '_'
+        assert name not in self.symbols, f"Symbol {name} already exists"
+
+        current_node = self.current_node        
+        type_ = self.symbols[name]
+        new_node = SymbolNode(
+            name,
+            type_,
+            hidden = current_node.hidden.clone() if current_node.hidden is not None else None,
+            cell = current_node.cell.clone() if current_node.cell is not None else None
+        )
+        self.substitute(current_node, new_node)
+
+        self.sub_states[name] = (
+            new_node,
+            current_node,
+            self.h_glob.clone() if self.h_glob is not None else None,
+            self.c_glob.clone() if self.c_glob is not None else None
+        )
+
+    @property
+    def variable_types(self) -> Dict[int, str]:
+        return {sn.type : name for name, (sn, _, _, _) in self.sub_states.items()}
+    
+    def can_switch_to_sub_state(self) -> bool:
+        return self.current_node.type in self.variable_types
+    
+    def switch_to_sub_state(self, name: Optional[str] = None) -> None:
+        if name is None:
+            t = self.current_node.type
+            name = self.variable_types.get(t, None)
+            if name is None:
+                raise ValueError(f"Symbol type {t} not found")
+            
+        assert name in self.sub_states.keys(), f"Symbol {name} not found"
+        self.update()
+        self.current_name = name
+        _, self.en, self.h_glob, self.c_glob = self.sub_states[name]
+        self.coord = ()
+    
+    def can_revert_to_primary_state(self) -> bool:
+        return self.current_name is not None
+    
+    def revert_to_primary_state(self) -> None:
+        self.update()
+        self.en, self.h_glob, self.c_glob = self.primary_state
+        self.coord = ()
+        self.current_name = None
+    
+    def can_evaluate_symbol(self) -> bool:
+        return self.current_name is not None
+    
+    def evaluate_symbol(self, name: Optional[str] = None) -> None:
+        if name is None:
+            name = self.current_name
+        if name is None:
+            raise ValueError("No symbol to evaluate")
+        assert name in self.sub_states.keys(), f"Symbol {name} not found"
+        if name == self.current_name:
+            self.revert_to_primary_state()
+
+        n, sub_en, _, _ = self.sub_states.pop(name)
+        del self.symbols[name]
+        self.substitute(n, sub_en)
+    
+    def evaluate_all_symbols(self) -> None:
+        names = list(self.sub_states.keys())
+        for name in names:
+            self.evaluate_symbol(name)
+    
+    def finish(self) -> None:
+        self.evaluate_all_symbols()
+        self.en.reset_tensors()
+    
+    def count_symbol(self, name: Optional[str] = None) -> int:
+        if name is None:
+            name = self.current_name
+        if name is None:
+            return 1
+        assert name in self.sub_states.keys(), f"Symbol {name} not found"
+        self.update()
+        node = self.sub_states[name][1]
+        count = len(self.primary_state[0].matches(node))
+        for sub_name, (_, sub_en, _, _) in self.sub_states.items():
+            if sub_name != name:
+                sub_count = len(sub_en.matches(node))
+                if sub_count > 0:
+                    count += sub_count * self.count_symbol(sub_name)
+        return count
+
+    def node_count(self, name: Optional[str] = None) -> int:
+        if name is None:
+            self.update()
+            node = self.primary_state[0]
+        else:
+            assert name in self.sub_states.keys(), f"Symbol {name} not found"
+            self.update()
+            node = self.sub_states[name][1]
+        
+        node_types = [n.type for n in node.topological_sort()]
+        variable_types = self.variable_types
+        # Initialize counters
+        symbol_counts = {
+            key: 0 for key in variable_types.values()# if key is not name
+        }
+        count = 0
+        for node_type in node_types:
+            if node_type not in variable_types.keys():
+                count += 1
+            else:
+                symbol_counts[variable_types[node_type]] += 1
+        
+        for key, value in symbol_counts.items():
+            if value > 0:
+                count += value * self.node_count(key)
+        return count
+
+    def __repr__(self) -> str:
+        s = self.en.__repr__()
+        s += f"\ncoord: {self.coord}"
+        for name, (symbol_node, sub_en, _, _) in self.sub_states.items():
+            s += f"\n{name}: {sub_en.__repr__()}"
+        return s
+

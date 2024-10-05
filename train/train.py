@@ -12,7 +12,7 @@ import torch
 # from src.model.environment import Symple
 from src.model.model import SympleAgent
 from src.model.training import train_on_batch_with_value_function_baseline
-from src.model.tree import ExprNode
+from src.model.state import SympleState
 
 from definitions import ROOT_DIR
 
@@ -117,7 +117,7 @@ for epoch in range(1, num_epochs + 1):
     epoch_data = []
     
     for i in range(0, batch_size * n_batches, batch_size):
-        batch = shuffled_data[i:i+batch_size].apply(ExprNode.from_sympy).tolist()
+        batch = shuffled_data[i:i+batch_size].apply(SympleState.from_sympy).tolist()
         
         overall_batch_num += 1
         batch_number_in_epoch = (i // batch_size) + 1
@@ -150,7 +150,7 @@ for epoch in range(1, num_epochs + 1):
             history['output'] = str(output_expr.to_sympy())
             history['n_steps'] = len(history['example_history'])
 
-            input_node_count = ExprNode.from_sympy(input_expr).node_count()
+            input_node_count = SympleState.from_sympy(input_expr).node_count()
             output_node_count = output_expr.node_count()
             computed_ncr = input_node_count - output_node_count
             history_ncr = history['node_count_reduction']

@@ -2,7 +2,7 @@
 import torch
 from src.model.model import SympleAgent
 from src.model.environment import Symple
-from src.model.tree import ExprNode
+from src.model.state import SympleState
 from typing import List, Callable, Union, Optional, Tuple, Dict, Any
 
 def compute_loss(
@@ -116,45 +116,45 @@ def compute_returns(
 
 def train_on_batch(
         agent: SympleAgent, 
-        expr_nodes: List[ExprNode], 
+        states: List[SympleState], 
         optimizer: torch.optim.Optimizer,
-        behavior_policy: Optional[Callable[[ExprNode, Tuple[int, ...], Symple], Union[torch.Tensor, List[float]]]] = None,
+        behavior_policy: Optional[Callable[[SympleState, Symple], Union[torch.Tensor, List[float]]]] = None,
         baseline: Optional[Union[List[float], float]] = None,
         gamma: float = 1.,
         agent_forward_kwargs: Dict[str, Any] = {},
         **symple_kwargs: Dict[str, Any]
-) -> Tuple[float, List[Dict[str, Any]], List[ExprNode], torch.Tensor]:
+) -> Tuple[float, List[Dict[str, Any]], List[SympleState], torch.Tensor]:
     """
-    Train the agent on a batch of ExprNodes.
+    Train the agent on a batch of SympleStates.
 
     Args:
     agent (SympleAgent): The agent to train.
-    expr_nodes (List[ExprNode]): A list of ExprNode instances to train on.
+    states (List[SympleState]): A list of SympleState instances to train on.
     optimizer (torch.optim.Optimizer): The optimizer to use for training.
-    behavior_policy (Optional[Callable[[ExprNode, Tuple[int, ...], Symple], Union[torch.Tensor, List[float]]]]): The behavior policy to use for off-policy training if given.
+    behavior_policy (Optional[Callable[[SympleState, Symple], Union[torch.Tensor, List[float]]]]): The behavior policy to use for off-policy training if given.
     baseline (Optional[Union[List[float], float]]): Optional baseline to subtract from returns.
     gamma (float): Discount factor for future rewards.
-    **symple_kwargs: Keyword arguments to pass to Symple constructor for each ExprNode.
+    **symple_kwargs: Keyword arguments to pass to Symple constructor for each SympleState.
 
     Returns:
-    Tuple[float, List[Dict[str, Any]], List[ExprNode], torch.Tensor]: 
+    Tuple[float, List[Dict[str, Any]], List[SympleState], torch.Tensor]: 
         - The average return for this batch.
         - The batch history.
-        - The output ExprNodes from agent.forward.
+        - The output SympleStates from agent.forward.
         - The average returns by step.
     """
     agent.train()
     optimizer.zero_grad()
     batch_history = []
-    output_expr_nodes = []
+    output_states = []
     avg_returns_by_step = torch.tensor([], device=agent.device)
     num_examples_by_step = torch.tensor([], device=agent.device)
 
-    for en in expr_nodes:
+    for state in states:
         env = Symple(**symple_kwargs)
         if behavior_policy:
-            history, output_en = agent(en, env, behavior_policy=behavior_policy, **agent_forward_kwargs)
-            output_expr_nodes.append(output_en)
+            history, output_state = agent(state, env, behavior_policy=behavior_policy, **agent_forward_kwargs)
+            output_states.append(output_state)
             
             rewards = [step['reward'] for step in history]
             target_action_probs = [step['target_probability'] for step in history]
@@ -162,14 +162,14 @@ def train_on_batch(
             returns = compute_returns(rewards, target_action_probs, behavior_action_probs, gamma=gamma)
             probs = target_action_probs
         else:
-            history, output_en = agent(en, env, **agent_forward_kwargs)
-            output_expr_nodes.append(output_en)
+            history, output_state = agent(state, env, **agent_forward_kwargs)
+            output_states.append(output_state)
             rewards = [step['reward'] for step in history]
             returns = compute_returns(rewards, [step['probability'] for step in history], gamma=gamma)
             probs = [step['probability'] for step in history]
 
         loss = compute_loss(returns, probs, baseline=baseline)
-        loss = loss / len(expr_nodes)
+        loss = loss / len(states)
         loss.backward()
 
         # Update average returns by step
@@ -203,7 +203,7 @@ def train_on_batch(
     optimizer.step()
 
     avg_return = avg_returns_by_step[0].item()  # Average return of the first step
-    return avg_return, batch_history, output_expr_nodes, avg_returns_by_step
+    return avg_return, batch_history, output_states, avg_returns_by_step
 
 
 def update_value_function_estimate(
@@ -235,9 +235,9 @@ def train_on_batch_with_value_function_baseline(
         V: torch.Tensor,
         batch_num: int,
         **kwargs: Any
-) -> Tuple[float, List[Dict[str, Any]], List[ExprNode], torch.Tensor]:
+) -> Tuple[float, List[Dict[str, Any]], List[SympleState], torch.Tensor]:
     """
-    Train on a batch of ExprNodes with a value function baseline.
+    Train on a batch of SympleStates with a value function baseline.
 
     Args:
     *args: Positional arguments to pass to train_on_batch.
@@ -246,13 +246,13 @@ def train_on_batch_with_value_function_baseline(
     **kwargs: Keyword arguments to pass to train_on_batch.
 
     Returns:
-    Tuple[float, List[Dict[str, Any]], List[ExprNode], torch.Tensor]:
+    Tuple[float, List[Dict[str, Any]], List[SympleState], torch.Tensor]:
         - The average return for this batch.
         - The batch history.
-        - The output ExprNodes from agent.forward.
+        - The output SympleStates from agent.forward.
         - The updated value function estimate.
     """
-    avg_return, batch_history, output_expr_nodes, avg_returns_by_step = train_on_batch(*args, baseline=V, **kwargs)
+    avg_return, batch_history, output_states, avg_returns_by_step = train_on_batch(*args, baseline=V, **kwargs)
 
     V = update_value_function_estimate(V, avg_returns_by_step, batch_num)
-    return avg_return, batch_history, output_expr_nodes, V
+    return avg_return, batch_history, output_states, V
