@@ -2,9 +2,9 @@ import unittest
 
 import sympy as sp
 
-from src.model.tree import ExprNode
 from src.model.environment import Symple
 from src.model.model import SympleAgent
+from src.model.state import SympleState
 from train.aux_policies import random_policy
 
 x, y, z = sp.symbols('x y z')
@@ -42,11 +42,10 @@ class TestSympleAgent(unittest.TestCase):
     def test_agent_with_simple_expression(self):
         x = sp.Symbol("x")
         expr = sp.expand((x**2 - x + 1) ** 4)
-        initial_expr = ExprNode.from_sympy(expr)
-        history, final_state = self.agent(initial_expr)
+        history, final_state = self.agent(expr)
         self.assertGreater(len(history), 0)
         self.assertIsInstance(history, list)
-        self.assertIsInstance(final_state, ExprNode)
+        self.assertIsInstance(final_state, SympleState)
 
     def test_agent_with_complex_expression(self):
         x, y = sp.symbols("x y")
@@ -54,7 +53,7 @@ class TestSympleAgent(unittest.TestCase):
         history, final_state = self.agent(expr)
         self.assertGreater(len(history), 0)
         self.assertIsInstance(history, list)
-        self.assertIsInstance(final_state, ExprNode)
+        self.assertIsInstance(final_state, SympleState)
 
     def test_agent_with_single_variable_expression(self):
         x = sp.Symbol("x")
@@ -62,40 +61,37 @@ class TestSympleAgent(unittest.TestCase):
         history, final_state = self.agent(expr)
         self.assertGreater(len(history), 0)
         self.assertIsInstance(history, list)
-        self.assertIsInstance(final_state, ExprNode)
+        self.assertIsInstance(final_state, SympleState)
 
     def test_agent_with_no_variable_expression(self):
         expr = sp.expand(42)
-        initial_expr = ExprNode.from_sympy(expr)
-        history, final_state = self.agent(initial_expr)
+        history, final_state = self.agent(expr)
         self.assertGreater(len(history), 0)
         self.assertIsInstance(history, list)
-        self.assertIsInstance(final_state, ExprNode)
+        self.assertIsInstance(final_state, SympleState)
 
     def test_off_policy_forward(self):
         x = sp.Symbol("x")
         expr = sp.expand((x**2 - x + 1) ** 2)
-        initial_expr = ExprNode.from_sympy(expr)
 
         behavior_policy = random_policy
 
         history, final_state = self.agent(
-            initial_expr,
+            expr,
             behavior_policy=behavior_policy,
             min_steps=20,
             max_steps=1000
         )
         self.assertGreater(len(history), 0)
         self.assertIsInstance(history, list)
-        self.assertIsInstance(final_state, ExprNode)
+        self.assertIsInstance(final_state, SympleState)
         self.assertTrue('behavior_probability' in history[0].keys())
     
 
     def test_agent_with_random_policy(self):
         for expr in expressions:
-            initial_expr = ExprNode.from_sympy(expr)
             history, final_state = self.agent(
-                initial_expr,
+                expr,
                 behavior_policy=random_policy,
                 min_steps=20,
                 max_steps=1000
@@ -103,7 +99,7 @@ class TestSympleAgent(unittest.TestCase):
             
             self.assertGreater(len(history), 0)
             self.assertIsInstance(history, list)
-            self.assertIsInstance(final_state, ExprNode)
+            self.assertIsInstance(final_state, SympleState)
             
             for event in history:
                 if event['action_type'] in ['high_level', 'internal']:
@@ -117,9 +113,8 @@ class TestSympleAgent(unittest.TestCase):
 
     def test_agent_with_temperature_policy(self):
         for expr in expressions:
-            initial_expr = ExprNode.from_sympy(expr)
             history, final_state = self.agent(
-                initial_expr,
+                expr,
                 behavior_policy=('temperature', 5.0),
                 min_steps=20,
                 max_steps=1000
@@ -127,7 +122,7 @@ class TestSympleAgent(unittest.TestCase):
             
             self.assertGreater(len(history), 0)
             self.assertIsInstance(history, list)
-            self.assertIsInstance(final_state, ExprNode)
+            self.assertIsInstance(final_state, SympleState)
             
             final_sympy = final_state.to_sympy()
             self.assertTrue(check_equality(expr, final_sympy),
