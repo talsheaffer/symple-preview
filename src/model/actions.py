@@ -1,21 +1,9 @@
-from symple.expr.actions import ACTIONS, ActionType, Action
+from symple.expr.actions import ACTIONS, Action
 from symple.expr.expr_node import ExprNode as ExprNodeBase
 from typing import Tuple, Callable, Any, Optional
 from src.model.tree import ExprNode
 from src.model.state import SympleState
 import sympy as sp
-
-depths = {key: 1 for key in ACTIONS.keys()}
-depths[ActionType.ASSOCIATE_LEFT] = 2
-depths[ActionType.ASSOCIATE_RIGHT] = 2
-depths[ActionType.DISTRIBUTE_LEFT] = 2
-depths[ActionType.DISTRIBUTE_RIGHT] = 2
-depths[ActionType.FACTOR_RIGHT] = 2
-depths[ActionType.FACTOR_LEFT] = 2
-depths[ActionType.REDUCE_DOUBLE_INV] = 0
-depths[ActionType.REDUCE_GROUP_UNIT] = 0
-depths[ActionType.MULTIPLY_ONE] = 2
-depths[ActionType.ADD_ZERO] = 2
 
 def apply_op_and_count(op: Callable[[ExprNode], ExprNode]) -> Callable[[SympleState], Tuple[SympleState, int]]:
     def wrapper(state: SympleState) -> Tuple[SympleState, int]:
@@ -29,7 +17,6 @@ def apply_op_and_count(op: Callable[[ExprNode], ExprNode]) -> Callable[[SympleSt
 
 def wrap_action(
         action: Callable[[ExprNodeBase], ExprNodeBase],
-        depth: int = 0
 ) -> Callable[[SympleState], Tuple[SympleState, int]]:
     
     def subclass_wrapper(expr: ExprNodeBase) -> ExprNode:
@@ -44,7 +31,7 @@ def wrap_can_apply(can_apply: Callable[[ExprNodeBase], bool]) -> Callable[[Sympl
     return wrapper
 
 for action_type, action in ACTIONS.items():
-    action.apply = wrap_action(action.apply, depth = depths[action_type])
+    action.apply = wrap_action(action.apply)
     action.can_apply = wrap_can_apply(action.can_apply)
 
 OPS_MAP = list(ACTIONS.values())
