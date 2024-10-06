@@ -9,6 +9,8 @@ from src.model.environment import TIME_PENALTY, NODE_COUNT_IMPORTANCE_FACTOR, CO
 from src.model.actions import OPS_MAP
 from src.model.model import INTERNAL_OPS
 
+num_epochs = 3
+
 
 # Find the most recent JSON file
 json_dir = os.path.join(ROOT_DIR, 'train/training_data')
@@ -26,6 +28,12 @@ print(f'Using training data from: {formatted_date_time}')
 with open(os.path.join(json_dir, latest_json), 'r') as f:
     data = json.load(f)
 
+# Get the maximum epoch number
+max_epoch = max(entry['epoch'] for entry in data)
+
+# Override data to include only the last num_epochs
+data = [entry for entry in data if entry['epoch'] > max_epoch - num_epochs]
+
 # Extract necessary data
 batch_numbers = []
 returns = []
@@ -37,7 +45,7 @@ if 'batch_number_in_epoch' in data[0].keys():
 for entry in data:
     epoch = entry['epoch']
     batch_in_epoch = entry['batch_number']
-    batch_numbers.append((epoch - 1) * max(entry['batch_number'] for entry in data if entry['epoch'] == epoch) + batch_in_epoch)
+    batch_numbers.append((epoch - (max_epoch - num_epochs + 1)) * max(entry['batch_number'] for entry in data if entry['epoch'] == epoch) + batch_in_epoch)
     returns.append(entry['avg_return'])
     eval_times.append(entry['avg_eval_time'])
 
@@ -58,7 +66,7 @@ os.makedirs(figures_dir, exist_ok=True)
 # Plot the return history
 plt.figure(figsize=(10, 5))
 plt.plot(filtered_batch_numbers, filtered_returns)
-plt.title('Average Return vs Batch Number (|Return| <= 1000)')
+plt.title(f'Average Return vs Batch Number (|Return| <= 1000, Last {num_epochs} Epochs)')
 plt.xlabel('Batch Number')
 plt.ylabel('Average Return')
 plt.axhline(y=0, color='k', linestyle='-', linewidth=0.5)
@@ -68,7 +76,7 @@ plt.close()
 # Plot the evaluation time history
 plt.figure(figsize=(10, 5))
 plt.plot(filtered_batch_numbers, filtered_eval_times)
-plt.title('Average Evaluation Time per Expression vs Batch Number (Eval Time <= 20s)')
+plt.title(f'Average Evaluation Time per Expression vs Batch Number (Eval Time <= 20s, Last {num_epochs} Epochs)')
 plt.xlabel('Batch Number')
 plt.ylabel('Average Evaluation Time (seconds)')
 plt.savefig(os.path.join(figures_dir, 'eval_time_history.png'))
@@ -87,7 +95,7 @@ ax2.set_ylabel('Average Evaluation Time (seconds)', color='red')
 ax2.plot(filtered_batch_numbers, filtered_eval_times, color='red', label='Avg Eval Time')
 ax2.tick_params(axis='y', labelcolor='red')
 
-plt.title('Average Return and Evaluation Time vs Batch Number (|Return| <= 1000, Eval Time <= 20s)')
+plt.title(f'Average Return and Evaluation Time vs Batch Number (|Return| <= 1000, Eval Time <= 20s, Last {num_epochs} Epochs)')
 fig.legend(loc='upper right', bbox_to_anchor=(1,1), bbox_transform=ax1.transAxes)
 
 plt.axhline(y=0, color='k', linestyle='-', linewidth=0.5)
@@ -102,7 +110,7 @@ moving_avg = [sum(filtered_returns[max(0, i-window_size):i])/min(i, window_size)
 plt.figure(figsize=(10, 5))
 plt.plot(filtered_batch_numbers, filtered_returns, alpha=0.3, label='Raw Return')
 plt.plot(filtered_batch_numbers, moving_avg, label=f'{window_size}-batch Moving Average')
-plt.title(f'Raw Return and {window_size}-batch Moving Average vs Batch Number (|Return| <= 1000)')
+plt.title(f'Raw Return and {window_size}-batch Moving Average vs Batch Number (|Return| <= 1000, Last {num_epochs} Epochs)')
 plt.xlabel('Batch Number')
 plt.ylabel('Return')
 plt.legend()
@@ -124,7 +132,7 @@ std_ncr = np.std(true_ncr_filtered)
 # Plot histogram of true node count reduction
 plt.figure(figsize=(10, 5))
 plt.hist(true_ncr_filtered, bins=50, edgecolor='black')
-plt.title(f'Distribution of True Node Count Reduction (|NCR| <= {ncr_threshold})')
+plt.title(f'Distribution of True Node Count Reduction (|NCR| <= {ncr_threshold}, Last {num_epochs} Epochs)')
 plt.xlabel('Node Count Reduction')
 plt.ylabel('Frequency')
 plt.axvline(mean_ncr, color='r', linestyle='dashed', linewidth=2, label=f'Mean: {mean_ncr:.2f}\nStd: {std_ncr:.2f}')
@@ -148,7 +156,7 @@ moving_avg_ncr = [np.nanmean(avg_ncr_per_batch_filtered[max(0, i-window_size):i]
 plt.figure(figsize=(10, 5))
 plt.plot(batch_numbers, avg_ncr_per_batch_filtered, alpha=0.3, label='Avg Node Count Reduction')
 plt.plot(batch_numbers, moving_avg_ncr, label=f'{window_size}-batch Moving Average')
-plt.title('Average Node Count Reduction vs Batch Number (|NCR| <= 1000)')
+plt.title(f'Average Node Count Reduction vs Batch Number (|NCR| <= 1000, Last {num_epochs} Epochs)')
 plt.xlabel('Batch Number')
 plt.ylabel('Average Node Count Reduction')
 plt.axhline(y=0, color='k', linestyle='-', linewidth=0.5)
@@ -228,7 +236,7 @@ unique_actions = range(NUM_EXTERNAL_ACTIONS+1)
 action_counts = [external_actions.count(action) for action in unique_actions]
 
 plt.bar(range(len(unique_actions)), action_counts, edgecolor='black')
-plt.title('Histogram of External Actions')
+plt.title(f'Histogram of External Actions (Last {num_epochs} Epochs)')
 plt.xlabel('Action')
 plt.ylabel('Frequency')
 
@@ -249,7 +257,7 @@ print("Histogram of external actions has been saved as 'external_actions_histogr
 plt.figure(figsize=(16, 8))  # Maintain the increased figure size for readability
 
 plt.bar(range(len(unique_actions)), action_counts, edgecolor='black')
-plt.title('Histogram of External Actions (Log Scale)')
+plt.title(f'Histogram of External Actions (Log Scale, Last {num_epochs} Epochs)')
 plt.xlabel('Action')
 plt.ylabel('Frequency (Log Scale)')
 
@@ -279,7 +287,7 @@ unique_internal_actions = range(len(INTERNAL_OPS))
 internal_action_counts = [internal_actions.count(action) for action in unique_internal_actions]
 
 plt.bar(range(len(unique_internal_actions)), internal_action_counts, edgecolor='black')
-plt.title('Histogram of Internal Actions')
+plt.title(f'Histogram of Internal Actions (Last {num_epochs} Epochs)')
 plt.xlabel('Action')
 plt.ylabel('Frequency')
 
@@ -299,7 +307,7 @@ print("Histogram of internal actions has been saved as 'internal_actions_histogr
 plt.figure(figsize=(16, 8))
 
 plt.bar(range(len(unique_internal_actions)), internal_action_counts, edgecolor='black')
-plt.title('Histogram of Internal Actions (Log Scale)')
+plt.title(f'Histogram of Internal Actions (Log Scale, Last {num_epochs} Epochs)')
 plt.xlabel('Action')
 plt.ylabel('Frequency (Log Scale)')
 
