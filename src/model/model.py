@@ -398,16 +398,16 @@ class SympleAgent(nn.Module):
             Tuple[SympleState, bool, Dict]: The new state, whether the episode is done, and event information.
         """
         high_level_action = torch.multinomial(behavior_probs['high_level'], 1).item()
-        behavior_high_level_action_prob = behavior_probs['high_level'][0, high_level_action]
-        target_high_level_action_prob = target_probs['high_level'][0, high_level_action]
+        behavior_high_level_action_prob = behavior_probs['high_level'][:, high_level_action]
+        target_high_level_action_prob = target_probs['high_level'][:, high_level_action]
         high_level_action = self.high_level_op_labels[high_level_action]    
 
         done = False
 
         if high_level_action == 'internal':
             action = torch.multinomial(behavior_probs['internal'], 1).item()
-            target_prob = target_probs['internal'][0, action]
-            behavior_prob = behavior_probs['internal'][0, action]
+            target_prob = target_probs['internal'][:, action]
+            behavior_prob = behavior_probs['internal'][:, action]
 
             state, complexity = self.apply_internal_op(state, action)
 
@@ -416,16 +416,16 @@ class SympleAgent(nn.Module):
         
         elif high_level_action == 'external':
             action = torch.multinomial(behavior_probs['external'], 1).item()
-            target_prob = target_probs['external'][0, action]
-            behavior_prob = behavior_probs['external'][0, action]
+            target_prob = target_probs['external'][:, action]
+            behavior_prob = behavior_probs['external'][:, action]
 
             state, reward, node_count_reduction = env.step(state, action)
             complexity = 0.0
 
         elif high_level_action == 'teleport':
             action = torch.multinomial(behavior_probs['teleport'], 1).item()
-            target_prob = target_probs['teleport'][0, action]
-            behavior_prob = behavior_probs['teleport'][0, action]
+            target_prob = target_probs['teleport'][:, action]
+            behavior_prob = behavior_probs['teleport'][:, action]
 
             state.coord = state.en.get_coords()[action]
 
@@ -443,8 +443,8 @@ class SympleAgent(nn.Module):
         else:
             raise ValueError(f"Invalid high-level action: {high_level_action}")
         
-        target_prob *= target_high_level_action_prob
-        behavior_prob *= behavior_high_level_action_prob
+        target_prob = target_prob * target_high_level_action_prob
+        behavior_prob = behavior_prob * behavior_high_level_action_prob
 
         event = {
             'action_type': high_level_action,
