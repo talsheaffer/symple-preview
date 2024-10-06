@@ -3,6 +3,8 @@ from sympy import sympify
 from matplotlib import pyplot as plt
 import os
 
+from src.model.state import SympleState
+
 from definitions import ROOT_DIR
 
 with open(ROOT_DIR + "/data/dataset.json", "r") as f:
@@ -84,4 +86,42 @@ plt.xlabel('Node Count Difference')
 plt.ylabel('Frequency')
 plt.gca().spines[['top', 'right']].set_visible(False)
 plt.savefig(os.path.join(output_dir, "node_count_diff_distribution.png"))
+plt.close()
+
+
+# Compute node count for ExprNodes
+
+def get_expr_node_count(expr):
+    return SympleState.from_sympy(expr).node_count()
+
+df['expr_node_count'] = df['expr'].apply(get_expr_node_count)
+df['simplified_expr_node_count'] = df['simplified'].apply(get_expr_node_count)
+
+# Plot node count vs node count simplified for ExprNodes
+plt.figure(figsize=(10, 6))
+plt.scatter(df['simplified_expr_node_count'], df['expr_node_count'], s=6, alpha=0.8)
+plt.title('ExprNode Count vs ExprNode Count Simplified')
+plt.xlabel('ExprNode Count Simplified')
+plt.ylabel('ExprNode Count')
+plt.gca().spines[['top', 'right']].set_visible(False)
+plt.gca().set_aspect('equal')
+plt.savefig(os.path.join(output_dir, "expr_node_count_vs_simplified.png"))
+plt.close()
+
+# Compute average and std for ExprNode count difference
+expr_node_count_diff = df['expr_node_count'] - df['simplified_expr_node_count']
+avg_expr_node_count_diff = expr_node_count_diff.mean()
+std_expr_node_count_diff = expr_node_count_diff.std()
+
+print(f"Average ExprNode count difference (expr - simplified): {avg_expr_node_count_diff:.2f}")
+print(f"Standard deviation of ExprNode count difference: {std_expr_node_count_diff:.2f}")
+
+# Visualize the distribution of ExprNode count difference
+plt.figure(figsize=(10, 6))
+plt.hist(expr_node_count_diff, bins=30, edgecolor='black')
+plt.title('Distribution of ExprNode Count Difference (expr - simplified)')
+plt.xlabel('ExprNode Count Difference')
+plt.ylabel('Frequency')
+plt.gca().spines[['top', 'right']].set_visible(False)
+plt.savefig(os.path.join(output_dir, "expr_node_count_diff_distribution.png"))
 plt.close()
