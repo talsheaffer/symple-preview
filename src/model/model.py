@@ -58,26 +58,26 @@ class SympleAgent(nn.Module):
         self.tlstm_complexity = 4 * (self.hidden_size * (self.vocab_size + self.hidden_size) * 3)
        
         self.internal_ops = [
-            (lambda en, h, c: (self.apply_ffn(en), h, c), lambda en: self.ffn_complexity),
+            (lambda state: self.apply_ffn(state), lambda state: self.ffn_complexity),
             (
-                lambda en, h, c: self.apply_global_lstm(self.apply_ffn(en), h, c),
-                lambda en: self.ffn_complexity + self.glstm_complexity
+                lambda state: self.apply_global_lstm(self.apply_ffn(state)),
+                lambda state: self.ffn_complexity + self.glstm_complexity
             ),
-            (self.apply_global_lstm, lambda en: self.glstm_complexity)
+            (self.apply_global_lstm, lambda state: self.glstm_complexity)
         ]
         for i in range(self.num_internal_ops-3):
             if i %2 == 0:
                 self.internal_ops.append(
                     (
-                        lambda en, h, c: (self.apply_ternary_lstm(en, depth = i//2), h, c),
-                        lambda en: self.tlstm_complexity * en.node_count(depth=i//2)
+                        lambda state: self.apply_ternary_lstm(state, depth = i//2),
+                        lambda state: self.tlstm_complexity * state.current_node.node_count(depth=i//2)
                     )
                 )
             else:
                 self.internal_ops.append(
                     (
-                        lambda en, h, c: self.apply_global_lstm(self.apply_ternary_lstm(en, depth = i//2), h, c),
-                        lambda en: self.tlstm_complexity * en.node_count(depth=i//2) + self.glstm_complexity
+                        lambda state: self.apply_global_lstm(self.apply_ternary_lstm(state, depth = i//2)),
+                        lambda state: self.tlstm_complexity * state.current_node.node_count(depth=i//2) + self.glstm_complexity
                     )
                 )
         
@@ -102,52 +102,50 @@ class SympleAgent(nn.Module):
         """
         return torch.zeros((1, self.hidden_size), device=self.device, dtype=DEFAULT_DTYPE)
 
-    def apply_internal_op(self, input: ExprNode, op_num: int, h_glob: torch.Tensor, c_glob: torch.Tensor) -> Tuple[ExprNode, float, torch.Tensor, torch.Tensor]:
+    def apply_internal_op(self, state: SympleState, op_num: int) -> Tuple[SympleState, float]:
         """
         Applies an internal operation to the input expression tree recursively.
 
         Args:
-            input (ExprNode): The root node of the expression tree.
+            state (SympleState): The current state.
             op_num (int): The number of the internal operation to apply.
-            h_glob (torch.Tensor): Global hidden state.
-            c_glob (torch.Tensor): Global cell state.
 
         Returns:
-            Tuple[ExprNode, float, torch.Tensor, torch.Tensor]: The input node with updated hidden and cell states, and updated global states.
-            The float is the complexity of the operation.
+            Tuple[SympleState, float]: The updated state and the complexity of the operation.
         """
         op, complexity_func = self.internal_ops[op_num]
-        input, h_glob, c_glob = op(input, h_glob, c_glob)
-        complexity = complexity_func(input)
-        return input, complexity, h_glob, c_glob
+        complexity = complexity_func(state)
+        state = op(state)
+        return state, complexity
     
-    def apply_global_lstm(self, input: ExprNode, h_glob: torch.Tensor, c_glob: torch.Tensor) -> Tuple[ExprNode, torch.Tensor, torch.Tensor]:
+    def apply_global_lstm(self, state: SympleState) -> SympleState:
         """
         Applies a global LSTM to the input expression tree recursively.
 
         Args:
-            input (ExprNode): The root node of the expression tree.
-            h_glob (torch.Tensor): Global hidden state.
-            c_glob (torch.Tensor): Global cell state.
+            state (SympleState): The current state.
 
         Returns:
-            Tuple[ExprNode, torch.Tensor, torch.Tensor]: The input node with updated hidden and cell states, and updated global states.
+            SympleState: The updated state.
         """
-        _, (h_glob, c_glob) = self.lstm(input.hidden.unsqueeze(0), (h_glob, c_glob))
-        return input, h_glob, c_glob
+        current_node = state.current_node
+        _, (state.h_glob, state.c_glob) = self.lstm(current_node.hidden.unsqueeze(0), (state.h_glob, state.c_glob))
+        return state
     
-    def apply_ffn(self, input: ExprNode) -> ExprNode:
+    def apply_ffn(self, state: SympleState) -> SympleState:
         """
         Applies the feedforward network to the input expression node.
 
         Args:
-            input (ExprNode): The input expression node.
+            state (SympleState): The current state.
 
         Returns:
-            ExprNode: The input node with updated hidden state.
+            SympleState: The updated state.
         """
-        input.hidden = self.ffn(input.hidden)
-        return input
+        current_node = state.current_node
+        current_node.hidden = self.ffn(current_node.hidden)
+        state.substitute_current_node(current_node)
+        return state
     
     def apply_binary_lstm(self, input: ExprNode, depth: int = inf) -> ExprNode:
         """
@@ -182,7 +180,7 @@ class SympleAgent(nn.Module):
         
         return input
     
-    def apply_ternary_lstm(self, input: ExprNode, depth: int = 0) -> ExprNode:
+    def apply_ternary_lstm_to_node(self, input: ExprNode, depth: int = 0) -> ExprNode:
         """
         Applies a ternary LSTM to the input expression tree recursively.
 
@@ -194,8 +192,8 @@ class SympleAgent(nn.Module):
             ExprNode: The input node with updated hidden and cell states.
         """
         if depth > 0:
-            input.a = self.apply_ternary_lstm(input.a, depth=depth - 1) if input.a is not None else None
-            input.b = self.apply_ternary_lstm(input.b, depth=depth - 1) if input.b is not None else None
+            input.a = self.apply_ternary_lstm_to_node(input.a, depth=depth - 1) if input.a is not None else None
+            input.b = self.apply_ternary_lstm_to_node(input.b, depth=depth - 1) if input.b is not None else None
         input.ensure_parenthood()
 
         (input.hidden, input.cell) = self.tlstm(
@@ -213,6 +211,22 @@ class SympleAgent(nn.Module):
         )
         
         return input
+
+    def apply_ternary_lstm(self, state: SympleState, depth: int = 0) -> SympleState:
+        """
+        Applies a ternary LSTM to the current node in the state.
+
+        Args:
+            state (SympleState): The current state.
+            depth (int, optional): The maximum depth to traverse. Defaults to 0.
+
+        Returns:
+            SympleState: The updated state.
+        """
+        current_node = state.current_node
+        current_node = self.apply_ternary_lstm_to_node(current_node, depth)
+        state.substitute_current_node(current_node)
+        return state
     
     def get_policy_logits(self, state: SympleState, validity_mask: torch.Tensor, high_level_mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
@@ -302,7 +316,7 @@ class SympleAgent(nn.Module):
 
             prob = internal_action_prob * high_level_action_prob
 
-            current_node, complexity, state.h_glob, state.c_glob = self.apply_internal_op(current_node, action, state.h_glob, state.c_glob)
+            state, complexity = self.apply_internal_op(state, action)
             reward = env.time_penalty - env.compute_penalty_coefficient * complexity
             node_count_reduction = 0
 
@@ -385,8 +399,7 @@ class SympleAgent(nn.Module):
             target_prob = target_probs['internal'][0, action]
             behavior_prob = behavior_probs['internal'][0, action]
 
-            current_node = state.en.get_node(state.coord)
-            current_node, complexity, state.h_glob, state.c_glob = self.apply_internal_op(current_node, action, state.h_glob, state.c_glob)
+            state, complexity = self.apply_internal_op(state, action)
 
             reward = env.time_penalty - env.compute_penalty_coefficient * complexity
             node_count_reduction = 0
