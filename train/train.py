@@ -54,9 +54,10 @@ model_path = os.path.join(model_save_dir, model_filename)
 
 
 
-# embedding_size = 16
+
 agent = SympleAgent(
     hidden_size = 128,
+    # global_hidden_size=256,
     ffn_n_layers=2,
     lstm_n_layers=2
 )
@@ -103,6 +104,7 @@ V = torch.zeros(1, device=agent.device)
 overall_batch_num = 0
 
 for epoch in range(1, num_epochs + 1):
+    print(f"Epoch {epoch}/{num_epochs}")
     # Update learning rate based on epoch
     if epoch < 30:
         current_lr = initial_lr * (lr_decay_factor ** (epoch - 1))
