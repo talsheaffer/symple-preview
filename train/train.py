@@ -57,7 +57,6 @@ model_path = os.path.join(model_save_dir, model_filename)
 # embedding_size = 16
 agent = SympleAgent(
     hidden_size = 128,
-    num_internal_ops = 7,
     ffn_n_layers=2,
     lstm_n_layers=2
 )
