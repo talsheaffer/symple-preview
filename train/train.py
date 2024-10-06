@@ -16,26 +16,10 @@ from src.model.state import SympleState
 
 from definitions import ROOT_DIR
 
-from aux_policies import random_policy
-behavior_policy = random_policy
-behavior_policy = ('temperature', 5.0)
-# behavior_policy = None
-
 # Load the dataset
-
-
-# Apply from_sympy to df['expr']
-
-
-
 with open(ROOT_DIR + "/data/dataset.json", "r") as f:
     df = pd.read_json(f)
 df[df.columns[:3]] = df[df.columns[:3]].map(sp.sympify)
-
-# df['symple_envs'] = df['expr'].apply(Symple.from_sympy,
-#                                      time_penalty=0., # Additional keyward args to be passed to Symple.from_sympy
-#                                      )
-
 
 # Generate a unique filename for this training run
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -104,7 +88,9 @@ V = torch.zeros(1, device=agent.device)
 overall_batch_num = 0
 
 for epoch in range(1, num_epochs + 1):
-    print(f"Epoch {epoch}/{num_epochs}")
+    # behavior_policy = ('temperature', 2.0 + .1 * (epoch - 1)) if epoch < 20 else None
+    behavior_policy = None
+    print(f"Epoch {epoch}/{num_epochs}, Behavior Policy: {behavior_policy}")
     # Update learning rate based on epoch
     if epoch < 30:
         current_lr = initial_lr * (lr_decay_factor ** (epoch - 1))
@@ -131,7 +117,7 @@ for epoch in range(1, num_epochs + 1):
             optimizer,
             V=V,
             batch_num=overall_batch_num,
-            # behavior_policy=behavior_policy,
+            behavior_policy=behavior_policy,
             agent_forward_kwargs=dict(
                 min_steps=30,
                 max_steps=10000,
