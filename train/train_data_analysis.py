@@ -6,6 +6,8 @@ from datetime import datetime
 from definitions import ROOT_DIR
 
 from src.model.environment import TIME_PENALTY, NODE_COUNT_IMPORTANCE_FACTOR, COMPUTE_PENALTY_COEFFICIENT
+from src.model.actions import OPS_MAP
+
 
 # Find the most recent JSON file
 json_dir = os.path.join(ROOT_DIR, 'train/training_data')
@@ -201,25 +203,63 @@ print("\nAverage difference between expected and actual rewards for each action:
 for action, avg_diff in sorted_actions:
     print(f"Action: {action}, Average Difference: {avg_diff:.6f}")
 
-# Plot the top 10 actions with the highest average differences
+
 top_10_actions = sorted_actions[:10]
 action_names = [f"{action[0]}: {action[1]}" for action, _ in top_10_actions]
 avg_diffs = [avg_diff for _, avg_diff in top_10_actions]
 
+
 # Filter external actions
-external_actions = [action[1] for action in actions if action[0] not in ['high_level', 'internal']]
+action_names = [action.name for action in OPS_MAP]
+NUM_EXTERNAL_ACTIONS = len(action_names)
+action_names.append('teleport')
+external_actions = [
+    (action[1] if action[0] == 'external' else NUM_EXTERNAL_ACTIONS)
+    for action in actions if action[0] not in ['high_level', 'internal']
+]
 
 # Create histogram
-plt.figure(figsize=(12, 6))
-plt.hist(external_actions, bins=len(set(external_actions)), edgecolor='black')
+plt.figure(figsize=(16, 8))  # Increased figure size for better readability
+unique_actions = range(NUM_EXTERNAL_ACTIONS+1)
+action_counts = [external_actions.count(action) for action in unique_actions]
+
+plt.bar(range(len(unique_actions)), action_counts, edgecolor='black')
 plt.title('Histogram of External Actions')
 plt.xlabel('Action')
 plt.ylabel('Frequency')
-plt.xticks(rotation=45, ha='right')
+
+# Set x-ticks with action names from OPS_MAP
+plt.xticks(range(len(unique_actions)), action_names, rotation=45, ha='right')
+
+# Adjust layout to prevent cutting off labels
 plt.tight_layout()
 
 # Save the plot
-plt.savefig(os.path.join(figures_dir, 'external_actions_histogram.png'))
+plt.savefig(os.path.join(figures_dir, 'external_actions_histogram.png'), dpi=300, bbox_inches='tight')
 plt.close()
 
 print("Histogram of external actions has been saved as 'external_actions_histogram.png'")
+
+
+# Create histogram with logarithmic y-axis
+plt.figure(figsize=(16, 8))  # Maintain the increased figure size for readability
+
+plt.bar(range(len(unique_actions)), action_counts, edgecolor='black')
+plt.title('Histogram of External Actions (Log Scale)')
+plt.xlabel('Action')
+plt.ylabel('Frequency (Log Scale)')
+
+# Set y-axis to logarithmic scale
+plt.yscale('log')
+
+# Set x-ticks with action names from OPS_MAP
+plt.xticks(range(len(unique_actions)), action_names, rotation=45, ha='right')
+
+# Adjust layout to prevent cutting off labels
+plt.tight_layout()
+
+# Save the plot
+plt.savefig(os.path.join(figures_dir, 'external_actions_histogram_log.png'), dpi=300, bbox_inches='tight')
+plt.close()
+
+print("Histogram of external actions with logarithmic y-axis has been saved as 'external_actions_histogram_log.png'")
