@@ -16,6 +16,41 @@ from typing import Callable, Union, List, Tuple, Optional, Dict
 from sympy import Expr
 from numpy import inf
 
+def compose(f, g):
+    return lambda x: f(g(x))
+
+def with_kwargs(f, **kwargs):
+    return lambda *args: f(*args, **kwargs)
+
+NUM_INTERNAL_OPS = 5
+INTERNAL_OPS = [
+    (lambda agent: agent.apply_ffn, lambda agent: (lambda state: agent.ffn_complexity), 'ffn'),
+    (
+        lambda agent: compose(agent.apply_global_lstm, agent.apply_ffn),
+        lambda agent: (lambda state: agent.ffn_complexity + agent.glstm_complexity),
+        'ffn - glstm'
+    ),
+    (lambda agent: agent.apply_global_lstm, lambda agent: (lambda state: agent.glstm_complexity), 'glstm')
+    ]
+for i in range(NUM_INTERNAL_OPS-3):
+    depth = i//2
+    if i %2 == 0:
+        INTERNAL_OPS.append(
+            (
+                lambda agent: with_kwargs(agent.apply_ternary_lstm, depth = i//2),
+                lambda agent: (lambda state: agent.tlstm_complexity * state.current_node.node_count(depth=depth)),
+                f'tlstm (depth={depth})'
+            )
+        )
+    else:
+        INTERNAL_OPS.append(
+            (
+            lambda agent: compose(agent.apply_global_lstm, with_kwargs(agent.apply_ternary_lstm, depth = i//2)),
+            lambda agent: (lambda state: agent.tlstm_complexity * state.current_node.node_count(depth=depth) + agent.glstm_complexity),
+            f'tlstm (depth={depth}) - glstm'
+            )
+        )
+
 
 class SympleAgent(nn.Module):
     """
@@ -26,9 +61,6 @@ class SympleAgent(nn.Module):
         self,
         hidden_size: int,
         global_hidden_size: Optional[int] = None,
-        # vocab_size: int = VOCAB_SIZE,
-        num_ops: int = NUM_OPS,
-        num_internal_ops: int = 5,
         ffn_n_layers: int = 1,
         lstm_n_layers: int = 1,
     ):
@@ -36,8 +68,8 @@ class SympleAgent(nn.Module):
         self.hidden_size = hidden_size
         self.global_hidden_size = global_hidden_size if global_hidden_size is not None else hidden_size
         self.vocab_size = VOCAB_SIZE
-        self.num_ops = num_ops
-        self.num_internal_ops = num_internal_ops
+        self.num_ops = NUM_OPS
+        self.num_internal_ops = NUM_INTERNAL_OPS
 
         # nn modules
         self.lstm = nn.LSTM(self.hidden_size, self.global_hidden_size, num_layers=lstm_n_layers, batch_first=True)
@@ -57,29 +89,7 @@ class SympleAgent(nn.Module):
         self.blstm_complexity = 4 * (self.hidden_size * (self.vocab_size + self.hidden_size) * 2) 
         self.tlstm_complexity = 4 * (self.hidden_size * (self.vocab_size + self.hidden_size) * 3)
        
-        self.internal_ops = [
-            (lambda state: self.apply_ffn(state), lambda state: self.ffn_complexity),
-            (
-                lambda state: self.apply_global_lstm(self.apply_ffn(state)),
-                lambda state: self.ffn_complexity + self.glstm_complexity
-            ),
-            (self.apply_global_lstm, lambda state: self.glstm_complexity)
-        ]
-        for i in range(self.num_internal_ops-3):
-            if i %2 == 0:
-                self.internal_ops.append(
-                    (
-                        lambda state: self.apply_ternary_lstm(state, depth = i//2),
-                        lambda state: self.tlstm_complexity * state.current_node.node_count(depth=i//2)
-                    )
-                )
-            else:
-                self.internal_ops.append(
-                    (
-                        lambda state: self.apply_global_lstm(self.apply_ternary_lstm(state, depth = i//2)),
-                        lambda state: self.tlstm_complexity * state.current_node.node_count(depth=i//2) + self.glstm_complexity
-                    )
-                )
+        self.internal_ops = [(op(self), complexity_func(self)) for op, complexity_func, _ in INTERNAL_OPS]
         
         self.high_level_op_indices = OrderedDict(
             internal = 0,

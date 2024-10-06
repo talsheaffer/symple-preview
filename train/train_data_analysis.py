@@ -7,6 +7,7 @@ from definitions import ROOT_DIR
 
 from src.model.environment import TIME_PENALTY, NODE_COUNT_IMPORTANCE_FACTOR, COMPUTE_PENALTY_COEFFICIENT
 from src.model.actions import OPS_MAP
+from src.model.model import INTERNAL_OPS
 
 
 # Find the most recent JSON file
@@ -263,3 +264,53 @@ plt.savefig(os.path.join(figures_dir, 'external_actions_histogram_log.png'), dpi
 plt.close()
 
 print("Histogram of external actions with logarithmic y-axis has been saved as 'external_actions_histogram_log.png'")
+
+
+# Extract internal actions and their names
+internal_actions = [action[1] for action in actions if action[0] == 'internal']
+internal_action_names = [name for _, _, name in INTERNAL_OPS]
+
+# Create histogram for internal actions
+plt.figure(figsize=(16, 8))
+unique_internal_actions = range(len(INTERNAL_OPS))
+internal_action_counts = [internal_actions.count(action) for action in unique_internal_actions]
+
+plt.bar(range(len(unique_internal_actions)), internal_action_counts, edgecolor='black')
+plt.title('Histogram of Internal Actions')
+plt.xlabel('Action')
+plt.ylabel('Frequency')
+
+# Set x-ticks with internal action names
+plt.xticks(range(len(unique_internal_actions)), internal_action_names, rotation=45, ha='right')
+
+# Adjust layout to prevent cutting off labels
+plt.tight_layout()
+
+# Save the plot
+plt.savefig(os.path.join(figures_dir, 'internal_actions_histogram.png'), dpi=300, bbox_inches='tight')
+plt.close()
+
+print("Histogram of internal actions has been saved as 'internal_actions_histogram.png'")
+
+# Create histogram with logarithmic y-axis for internal actions
+plt.figure(figsize=(16, 8))
+
+plt.bar(range(len(unique_internal_actions)), internal_action_counts, edgecolor='black')
+plt.title('Histogram of Internal Actions (Log Scale)')
+plt.xlabel('Action')
+plt.ylabel('Frequency (Log Scale)')
+
+# Set y-axis to logarithmic scale
+plt.yscale('log')
+
+# Set x-ticks with internal action names
+plt.xticks(range(len(unique_internal_actions)), internal_action_names, rotation=45, ha='right')
+
+# Adjust layout to prevent cutting off labels
+plt.tight_layout()
+
+# Save the plot
+plt.savefig(os.path.join(figures_dir, 'internal_actions_histogram_log.png'), dpi=300, bbox_inches='tight')
+plt.close()
+
+print("Histogram of internal actions with logarithmic y-axis has been saved as 'internal_actions_histogram_log.png'")
