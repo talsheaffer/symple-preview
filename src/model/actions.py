@@ -30,11 +30,13 @@ def wrap_can_apply(can_apply: Callable[[ExprNodeBase], bool]) -> Callable[[Sympl
         return can_apply(state.en.get_node(state.coord))
     return wrapper
 
+OPS_MAP = []
 for action_type, action in ACTIONS.items():
+    name = action.apply.__name__
     action.apply = wrap_action(action.apply)
     action.can_apply = wrap_can_apply(action.can_apply)
-
-OPS_MAP = list(ACTIONS.values())
+    action.name = name
+    OPS_MAP.append(action)
 
 
 def can_move_up(state: SympleState) -> bool:
@@ -59,9 +61,15 @@ def move_right(state: SympleState) -> Tuple[SympleState, int]:
     return state, 0
 
 # Add new actions to the OPS_MAP
-OPS_MAP.append(Action(can_move_up, move_up))
-OPS_MAP.append(Action(can_move_left, move_left))
-OPS_MAP.append(Action(can_move_right, move_right))
+action = Action(can_move_up, move_up)
+action.name = "Move up"
+OPS_MAP.append(action)
+action = Action(can_move_left, move_left)
+action.name = "Move left"
+OPS_MAP.append(action)
+action = Action(can_move_right, move_right)
+action.name = "Move right"
+OPS_MAP.append(action)
 
 # Add sympy functions to the OPS_MAP
 
@@ -121,7 +129,9 @@ def always_applicable(state: SympleState) -> bool:
 
 for func in sympy_functions:
     wrapped_func = wrap_sympy_function(func)
-    OPS_MAP.append(Action(always_applicable, wrapped_func))
+    action = Action(always_applicable, wrapped_func)
+    action.name = f"sympy.{func.__name__}"
+    OPS_MAP.append(action)
 
 
 
@@ -155,9 +165,15 @@ def evaluate_symbol(state: SympleState) -> Tuple[SympleState, int]:
     state.evaluate_symbol()
     return state, 0
 
-OPS_MAP.append(Action(can_declare_new_symbol, declare_new_symbol))
-OPS_MAP.append(Action(can_switch_to_sub_state, switch_to_sub_state))
-OPS_MAP.append(Action(can_revert_to_primary_state, revert_to_primary_state))
-OPS_MAP.append(Action(can_evaluate_symbol, evaluate_symbol))
-
-
+action = Action(can_declare_new_symbol, declare_new_symbol)
+action.name = "Declare new symbol"
+OPS_MAP.append(action)
+action = Action(can_switch_to_sub_state, switch_to_sub_state)
+action.name = "Switch to sub-state"
+OPS_MAP.append(action)
+action = Action(can_revert_to_primary_state, revert_to_primary_state)
+action.name = "Revert to primary state"
+OPS_MAP.append(action)
+action = Action(can_evaluate_symbol, evaluate_symbol)
+action.name = "Evaluate symbol"
+OPS_MAP.append(action)
