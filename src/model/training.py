@@ -31,7 +31,7 @@ def compute_loss(
             baseline = baseline[:len(returns)]
 
     # Compute loss
-    action_log_probs = torch.stack(probs).log()
+    action_log_probs = torch.cat(probs).log()
     loss = -((returns-baseline) * action_log_probs).sum()
     
     return loss
@@ -99,7 +99,7 @@ def compute_returns(
     probs (List[torch.Tensor]): List of probabilities of chosen actions.
     behavior_policy_probs (Optional[List[torch.Tensor]]): List of probabilities of chosen actions under the behavior policy.
     gamma (float): Discount factor for future rewards.
-
+    
     Returns:
     torch.Tensor: The computed returns for each step.
     """
@@ -112,6 +112,24 @@ def compute_returns(
             future_return *= (probs[t].item() / behavior_policy_probs[t].item())
         returns[t] = future_return
     return returns
+
+def compute_Q_from_v(
+        rewards: List[float],
+        values: torch.Tensor,
+        probs: List[torch.Tensor],
+        behavior_policy_probs: Optional[List[torch.Tensor]] = None,
+        gamma: float = 1.,
+) -> torch.Tensor:
+    """
+    Compute the Q values from the value function and the rewards.
+    """
+    T = len(rewards)
+    Q = torch.zeros(T, device=values[0].device)
+    for t in range(T):
+        Q[t] = rewards[t] + gamma * (values[:,t+1].item() if t < T-1 else 0)
+        if behavior_policy_probs:
+            Q[t] *= (probs[t].item() / behavior_policy_probs[t].item())
+    return Q
 
 
 def train_on_batch(
@@ -159,17 +177,25 @@ def train_on_batch(
             rewards = [step['reward'] for step in history]
             target_action_probs = [step['target_probability'] for step in history]
             behavior_action_probs = [step['behavior_probability'] for step in history]
-            returns = compute_returns(rewards, target_action_probs, behavior_action_probs, gamma=gamma)
+            returns = compute_returns(rewards, target_action_probs, behavior_policy_probs=behavior_action_probs, gamma=gamma)
+            values = torch.cat([step['value'] for step in history], dim=-1)
+            Q = compute_Q_from_v(rewards, values, target_action_probs, behavior_policy_probs=behavior_action_probs, gamma=gamma)
             probs = target_action_probs
         else:
             history, output_state = agent(state, env, **agent_forward_kwargs)
             output_states.append(output_state)
             rewards = [step['reward'] for step in history]
-            returns = compute_returns(rewards, [step['probability'] for step in history], gamma=gamma)
             probs = [step['probability'] for step in history]
+            returns = compute_returns(rewards, probs, gamma=gamma)
+            values = torch.cat([step['value'] for step in history], dim=-1)
+            Q = compute_Q_from_v(rewards, values, probs, gamma=gamma)
 
-        loss = compute_loss(returns, probs, baseline=baseline)
-        loss = loss / len(states)
+        critic_loss = torch.nn.functional.mse_loss(values, returns[None,:])/2
+
+        baseline = values.detach()[0]
+        actor_loss = compute_loss(Q, probs, baseline=baseline)
+
+        loss = (actor_loss + critic_loss) / len(states)
         loss.backward()
 
         # Update average returns by step
