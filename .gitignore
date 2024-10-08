@@ -12,5 +12,4 @@ scratch.ipynb
 train/training_data/
 train/figures/
 train/models/
-
-
+src/benchmark/results/*.json
