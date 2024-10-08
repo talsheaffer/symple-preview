@@ -15,17 +15,34 @@ num_epochs = 3
 # Find the most recent JSON file
 json_dir = os.path.join(ROOT_DIR, 'train/training_data')
 json_files = [f for f in os.listdir(json_dir) if f.startswith('training_data_') and f.endswith('.json')]
-sorted_jsons = sorted(json_files, key=lambda x: datetime.strptime(x, 'training_data_%Y%m%d_%H%M%S.json'))
-latest_json = sorted_jsons[-1]
+# Sort JSON files by modification time
+sorted_jsons = sorted(json_files, key=lambda x: os.path.getmtime(os.path.join(json_dir, x)))
 
-# Parse the latest JSON filename to get the date and time
-date_time_str = latest_json.split('_', 2)[2].rsplit('.', 1)[0]
-parsed_date_time = datetime.strptime(date_time_str, '%Y%m%d_%H%M%S')
-formatted_date_time = parsed_date_time.strftime('%Y-%m-%d %H:%M:%S')
+# Display available JSON files
+print("Available training data files:")
+for i, json_file in enumerate(sorted_jsons):  # Show the 5 most recent files
+    file_time = datetime.fromtimestamp(os.path.getmtime(os.path.join(json_dir, json_file)))
+    print(f"{i+1}. {json_file} (Modified: {file_time.strftime('%Y-%m-%d %H:%M:%S')})")
+
+# Let user choose a file
+while True:
+    choice = input("Enter the number of the file you want to use (or 'latest' for the most recent): ")
+    if choice.lower() == 'latest':
+        selected_json = sorted_jsons[-1]
+        break
+    elif choice.isdigit() and 1 <= int(choice) <= len(sorted_jsons):
+        selected_json = sorted_jsons[int(choice)-1]
+        break
+    else:
+        print("Invalid choice. Please try again.")
+
+# Parse the selected JSON filename to get the date and time
+file_time = datetime.fromtimestamp(os.path.getmtime(os.path.join(json_dir, selected_json)))
+formatted_date_time = file_time.strftime('%Y-%m-%d %H:%M:%S')
 print(f'Using training data from: {formatted_date_time}')
 
 # Load the JSON data
-with open(os.path.join(json_dir, latest_json), 'r') as f:
+with open(os.path.join(json_dir, selected_json), 'r') as f:
     data = json.load(f)
 
 # Get the maximum epoch number
