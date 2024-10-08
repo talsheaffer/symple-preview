@@ -11,7 +11,7 @@ import torch
 
 # from src.model.environment import Symple
 from src.model.model import SympleAgent
-from src.model.training import train_on_batch_with_value_function_baseline
+from src.model.training import train_on_batch
 from src.model.state import SympleState
 
 from definitions import ROOT_DIR
@@ -30,36 +30,59 @@ json_filename = os.path.join(training_data_dir, f"training_data_{timestamp}.json
 
 model_save_dir = os.path.join(ROOT_DIR, 'train', 'models')
 os.makedirs(model_save_dir, exist_ok=True)
-model_filename = f'model_{timestamp}.pth'
-model_path = os.path.join(model_save_dir, model_filename)
+model_filename = f'model_{timestamp}'
+model_save_path = os.path.join(model_save_dir, model_filename)
 
+model_files = [f for f in os.listdir(model_save_dir) if f.startswith('model_') and f.endswith('.pth')]
 
-
-
-
-
+if model_files:
+    # Sort model files by modification time, oldest first
+    model_files.sort(key=lambda x: os.path.getmtime(os.path.join(model_save_dir, x)))
+    
+    print("Available models:")
+    for i, model_file in enumerate(model_files):
+        print(f"{i+1}. {model_file}")
+    
+    while True:
+        choice = input("Enter the number of the model you want to use (or 'none' for untrained model or 'latest' for the most recent): ")
+        if choice.lower() == 'none':
+            model_path = None
+            break
+        elif choice.lower() == 'latest':
+            model_path = os.path.join(model_save_dir, model_files[-1])
+            break
+        elif choice.isdigit() and 1 <= int(choice) <= len(model_files):
+            model_path = os.path.join(model_save_dir, model_files[int(choice)-1])
+            break
+        else:
+            print("Invalid choice. Please try again.")
+else:
+    model_path = None
+    print('No previous model found.')
 
 agent = SympleAgent(
     hidden_size = 128,
-    # global_hidden_size=256,
-    ffn_n_layers=2,
-    lstm_n_layers=2
+    global_hidden_size=256,
+    ffn_n_layers=3,
+    lstm_n_layers=3
 )
 
-# # Load the most recent model
-# model_files = [f for f in os.listdir(model_save_dir) if f.startswith('model_') and f.endswith('.pth')]
-# if model_files:
-#     latest_model = max(model_files, key=lambda x: datetime.strptime(x, 'model_%Y%m%d_%H%M%S.pth'))
-#     agent.load_state_dict(torch.load(os.path.join(model_save_dir, latest_model)))
-#     print(f'Loaded model from: {latest_model}')
-# else:
-#     print('No previous model found. Starting training from scratch.')
-# model_path = os.path.join(model_save_dir, latest_model)
+if model_path:
+    agent.load_state_dict(torch.load(model_path, weights_only=True))
+    print(f'Loaded model from: {os.path.basename(model_path)}')
+else:
+    print('Using untrained model.')
+
+
+
+def save_model(model,suffix=''):
+    torch.save(model.state_dict(), model_save_path+suffix+'.pth')
+    print(f"Model state dict saved to: {model_save_path+suffix+'.pth'}")
 
 
 
 # Define learning rate schedule
-initial_lr = 0.001
+initial_lr = 0.00005
 lr_decay_factor = 0.9
 
 # Initialize Adam optimizer
@@ -82,14 +105,14 @@ eval_times = []
 
 training_data = []
 
-# Initialize value function estimate
-V = torch.zeros(1, device=agent.device)
+# # Initialize value function estimate
+# V = torch.zeros(1, device=agent.device)
 
 overall_batch_num = 0
 
 for epoch in range(1, num_epochs + 1):
-    # behavior_policy = ('temperature', 2.0 + .1 * (epoch - 1)) if epoch < 20 else None
-    behavior_policy = None
+    behavior_policy = ('temperature', 1.5 + .15 * (epoch - 1)) if epoch < 10 else None
+    # behavior_policy = None
     print(f"Epoch {epoch}/{num_epochs}, Behavior Policy: {behavior_policy}")
     # Update learning rate based on epoch
     if epoch < 30:
@@ -111,16 +134,14 @@ for epoch in range(1, num_epochs + 1):
 
         # Measure time for training on the batch
         start_time = time.time()
-        avg_return, batch_history, output_expr_nodes, V = train_on_batch_with_value_function_baseline(
+        avg_return, batch_history, output_expr_nodes, _ = train_on_batch(
             agent,
             batch,
             optimizer,
-            V=V,
-            batch_num=overall_batch_num,
             behavior_policy=behavior_policy,
             agent_forward_kwargs=dict(
-                min_steps=30,
-                max_steps=10000,
+                min_steps=5,
+                max_steps=250,
             )
         )
         end_time = time.time()
@@ -150,6 +171,9 @@ for epoch in range(1, num_epochs + 1):
         avg_ncr = sum([history['node_count_reduction'] for history in batch_history]) / len(batch_history)
         avg_n_steps = sum([history['n_steps'] for history in batch_history]) / len(batch_history)
         
+        if avg_ncr > 26:
+            save_model(agent,suffix=f'_{epoch}_{batch_number_in_epoch}')
+
         print(f"Epoch {epoch}/{num_epochs}, Batch {batch_number_in_epoch}/{n_batches}, Return: {avg_return:.4f}, NCR: {avg_ncr:.4f}, Batch Time: {batch_time:.4f} seconds, Avg Eval Time: {avg_eval_time:.4f} seconds, Avg Steps: {avg_n_steps:.4f}")
         # Save batch data
         batch_data = {
@@ -178,8 +202,7 @@ for epoch in range(1, num_epochs + 1):
             json.dump(epoch_data, f, indent=2)
     
     # Save the model state dict
-    torch.save(agent.state_dict(), model_path)
-    print(f"Model state dict saved to: {model_path}")
+    save_model(agent)
 
 avg_time_per_batch = total_time / (num_epochs * (len(df) // batch_size))
 print(f"Training completed. Average time per batch: {avg_time_per_batch:.4f} seconds")
