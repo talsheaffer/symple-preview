@@ -1,5 +1,6 @@
 import unittest
 import sympy as sp
+from torch import Tensor
 from src.model.state import SympleState
 from src.model.tree import ExprNode, ExprNodeType
 
@@ -229,6 +230,39 @@ class TestSympleState(unittest.TestCase):
             state = SympleState.from_sympy(expr)
             count = state.count_symbol()
             self.assertIsInstance(count, int)
+    
+    def test_state_tensor(self):
+        expr = sp.sympify("x + y")
+        state = SympleState.from_sympy(expr)
+        
+        # Test initial state tensor
+        tensor = state.state_tensor
+        self.assertIsInstance(tensor, Tensor)
+        self.assertEqual(tensor.shape, (1, 8))  # 6 for action encoding, 2 for node counts
+        
+        # Test after an action
+        state.action_record.append(5)  # Append a dummy action
+        tensor = state.state_tensor
+        self.assertEqual(tensor[0, 4].item(), 1)  # Check if the action is encoded correctly
+        
+        # Test node counts
+        self.assertGreater(tensor[0, 6].item(), 0)  # Current node count
+        self.assertGreater(tensor[0, 7].item(), 0)  # Total node count
+        
+        # Test with a more complex expression
+        complex_expr = sp.sympify("(x + y)**2 - (x**2 + 2*x*y + y**2)")
+        complex_state = SympleState.from_sympy(complex_expr)
+        complex_tensor = complex_state.state_tensor
+        
+        self.assertGreater(complex_tensor[0, 7].item(), tensor[0, 7].item())  # More complex expression should have higher node count
+
+        for expr in expressions:
+            state = SympleState.from_sympy(expr)
+            tensor = state.state_tensor
+            self.assertIsInstance(tensor, Tensor)
+            self.assertEqual(tensor.shape, (1, 8))
+            self.assertGreaterEqual(tensor[0, 6].item(), 0)  # Current node count
+            self.assertGreater(tensor[0, 7].item(), 0)  # Total node count
 
 if __name__ == '__main__':
     unittest.main()

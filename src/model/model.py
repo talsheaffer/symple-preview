@@ -37,7 +37,7 @@ for i in range(NUM_INTERNAL_OPS-3):
     if i %2 == 0:
         INTERNAL_OPS.append(
             (
-                lambda agent: with_kwargs(agent.apply_ternary_lstm, depth = i//2),
+                lambda agent: with_kwargs(agent.apply_ternary_lstm, depth = depth),
                 lambda agent: (lambda state: agent.tlstm_complexity * state.current_node.node_count(depth=depth)),
                 f'tlstm (depth={depth})'
             )
@@ -45,7 +45,7 @@ for i in range(NUM_INTERNAL_OPS-3):
     else:
         INTERNAL_OPS.append(
             (
-            lambda agent: compose(agent.apply_global_lstm, with_kwargs(agent.apply_ternary_lstm, depth = i//2)),
+            lambda agent: compose(agent.apply_global_lstm, with_kwargs(agent.apply_ternary_lstm, depth = depth)),
             lambda agent: (lambda state: agent.tlstm_complexity * state.current_node.node_count(depth=depth) + agent.glstm_complexity),
             f'tlstm (depth={depth}) - glstm'
             )
@@ -70,25 +70,28 @@ class SympleAgent(nn.Module):
         self.vocab_size = VOCAB_SIZE
         self.num_ops = NUM_OPS
         self.num_internal_ops = NUM_INTERNAL_OPS
+        self.feature_size = self.hidden_size + self.global_hidden_size + 8
+        self.global_lstm_input_size = self.hidden_size + 8
 
         # nn modules
-        self.lstm = nn.LSTM(self.hidden_size, self.global_hidden_size, num_layers=lstm_n_layers, batch_first=True)
         self.blstm = NaryTreeLSTM(2, self.vocab_size, self.hidden_size)
         self.tlstm = NaryTreeLSTM(3, self.vocab_size, self.hidden_size)
+        self.lstm = nn.LSTM(self.global_lstm_input_size, self.global_hidden_size, num_layers=lstm_n_layers, batch_first=True)
         self.ffn = FFN(self.hidden_size, self.hidden_size, self.hidden_size, n_layers=ffn_n_layers)
-        self.teleport_ffn = FFN(self.global_hidden_size + self.hidden_size, self.hidden_size, 1, n_layers=ffn_n_layers)
 
         # FFNs for high-level and internal decisions
-        self.high_level_actor = FFN(self.hidden_size + self.global_hidden_size, self.hidden_size, 4, n_layers=ffn_n_layers)  # Changed to 4 for teleport and finish actions
-        self.internal_actor = FFN(self.hidden_size + self.global_hidden_size, self.hidden_size, self.num_internal_ops, n_layers=ffn_n_layers)
-        self.actor = FFN(self.hidden_size + self.global_hidden_size, self.hidden_size, self.num_ops, n_layers=ffn_n_layers)
+        self.high_level_actor = FFN(self.feature_size, self.hidden_size, 4, n_layers=ffn_n_layers)  # Changed to 4 for teleport and finish actions
+        self.teleport_ffn = FFN(self.feature_size, self.hidden_size, 1, n_layers=ffn_n_layers)
+        self.internal_actor = FFN(self.feature_size, self.hidden_size, self.num_internal_ops, n_layers=ffn_n_layers)
+        self.actor = FFN(self.feature_size, self.hidden_size, self.num_ops, n_layers=ffn_n_layers)
 
         # Value function estimator
-        self.value_function = FFN(self.hidden_size + self.global_hidden_size, self.hidden_size, 1, n_layers=ffn_n_layers)
+        self.value_function = FFN(self.feature_size, self.hidden_size, 1, n_layers=ffn_n_layers)
 
         # internal ops and their compute complexity. Including certain compositions of elementary internal ops
         self.ffn_complexity = self.hidden_size**2 * self.ffn.n_layers
-        self.glstm_complexity = 4 * (self.global_hidden_size * (self.hidden_size + self.global_hidden_size) * self.lstm.num_layers)
+        self.teleport_ffn_complexity =  self.hidden_size * (self.feature_size + self.hidden_size * self.teleport_ffn.n_layers + 1)
+        self.glstm_complexity = 4 * (self.global_hidden_size * self.global_lstm_input_size * self.lstm.num_layers)
         self.blstm_complexity = 4 * (self.hidden_size * (self.vocab_size + self.hidden_size) * 2) 
         self.tlstm_complexity = 4 * (self.hidden_size * (self.vocab_size + self.hidden_size) * 3)
        
@@ -142,7 +145,8 @@ class SympleAgent(nn.Module):
             SympleState: The updated state.
         """
         current_node = state.current_node
-        _, (state.h_glob, state.c_glob) = self.lstm(current_node.hidden.unsqueeze(0), (state.h_glob, state.c_glob))
+        lstm_input = torch.cat([current_node.hidden, state.state_tensor], dim=-1)
+        _, (state.h_glob, state.c_glob) = self.lstm(lstm_input.unsqueeze(0), (state.h_glob, state.c_glob))
         return state
     
     def apply_ffn(self, state: SympleState) -> SympleState:
@@ -159,6 +163,26 @@ class SympleAgent(nn.Module):
         current_node.hidden = self.ffn(current_node.hidden)
         state.substitute_current_node(current_node)
         return state
+    
+    def apply_teleport_ffn(self, state: SympleState) -> SympleState:
+        """
+        Applies the teleport feedforward network to the input expression tree recursively.
+
+        Args:
+            state (SympleState): The current state.
+
+        Returns:
+            SympleState: The updated state.
+        """
+        coords_and_nodes = state.en.get_coords_and_nodes()
+        n_nodes = len(coords_and_nodes)
+        h_glob = state.h_glob[-1].repeat(n_nodes, 1)
+        state_tensor = state.state_tensor.repeat(n_nodes, 1)
+        combined_hidden_list = [node.hidden for _, node in coords_and_nodes]
+        combined_hidden = torch.cat(combined_hidden_list, dim=0)
+        features = torch.cat([h_glob, combined_hidden, state_tensor], dim=-1)
+        teleport_logits = self.teleport_ffn(features).transpose(-1, -2)
+        return teleport_logits
     
     def apply_binary_lstm(self, input: ExprNode, depth: int = inf) -> ExprNode:
         """
@@ -254,7 +278,7 @@ class SympleAgent(nn.Module):
             Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]: Logits for high-level, internal, external, and teleport actions.
         """
         current_node = state.en.get_node(state.coord)
-        features = torch.cat([current_node.hidden, state.h_glob[-1]], dim=-1)
+        features = torch.cat([current_node.hidden, state.h_glob[-1], state.state_tensor], dim=-1)
 
         l_high = self.high_level_actor(features)
         if high_level_mask is not None:
@@ -263,10 +287,7 @@ class SympleAgent(nn.Module):
         l_internal = self.internal_actor(features)
         l_ext = self.actor(features) + validity_mask.log()
 
-        coords_and_nodes = state.en.get_coords_and_nodes()
-        combined_hidden_list = [torch.cat([state.h_glob[-1], node.hidden], dim=-1) for _, node in coords_and_nodes]
-        combined_hidden = torch.cat(combined_hidden_list, dim=0)
-        l_teleport = self.teleport_ffn(combined_hidden).transpose(-1, -2)
+        l_teleport = self.apply_teleport_ffn(state)
 
         return l_high, l_internal, l_ext, l_teleport
     
@@ -302,7 +323,7 @@ class SympleAgent(nn.Module):
             torch.Tensor: The estimated value of the state.
         """
         current_node = state.current_node
-        features = torch.cat([current_node.hidden, state.h_glob[-1]], dim=-1)
+        features = torch.cat([current_node.hidden, state.h_glob[-1], state.state_tensor], dim=-1)
         value = self.value_function(features)
         return value
 
@@ -320,7 +341,7 @@ class SympleAgent(nn.Module):
             Tuple[SympleState, bool, Dict]: The new state, whether the episode is done, and event information.
         """
         current_node = state.en.get_node(state.coord)
-        features = torch.cat([current_node.hidden, state.h_glob[-1]], dim=-1)
+        features = torch.cat([current_node.hidden, state.h_glob[-1], state.state_tensor], dim=-1)
 
         # Estimate value before taking action
         value = self.estimate_value(state)
@@ -352,10 +373,7 @@ class SympleAgent(nn.Module):
             node_count_reduction = 0
 
         elif high_level_action == 'teleport':
-            coords_and_nodes = state.en.get_coords_and_nodes()
-            combined_hidden_list = [torch.cat([state.h_glob[-1], node.hidden], dim=-1) for _, node in coords_and_nodes]
-            combined_hidden = torch.cat(combined_hidden_list, dim=0)
-            l_teleport = self.teleport_ffn(combined_hidden).transpose(-1, -2)
+            l_teleport = self.apply_teleport_ffn(state)
 
             teleport_probs = F.softmax(l_teleport / temperature, dim=-1)
             action = torch.multinomial(teleport_probs, 1).item()
@@ -367,7 +385,7 @@ class SympleAgent(nn.Module):
 
             reward = env.time_penalty
             node_count_reduction = 0
-            complexity = 0.0
+            complexity = state.en.node_count() * self.teleport_ffn_complexity
 
         elif high_level_action == 'external':
             validity_mask = env.get_validity_mask(state)

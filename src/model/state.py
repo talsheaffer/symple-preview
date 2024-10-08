@@ -2,12 +2,16 @@ from dataclasses import dataclass, field
 from typing import Optional, Union, Dict, Tuple
 from collections import deque
 
+import torch
+
 from src.model.tree import ExprNode, SymbolNode, SYMBOL_VOCAB_SIZE, VOCAB_SIZE
 from symple.expr.expr_node import ExprNodeType
 
 import sympy as sp
 
 from torch import Tensor
+
+ACTION_MEMORY_LENGTH = 10
 
 
 class SymbolManager(dict):
@@ -46,6 +50,7 @@ class SympleState:
     primary_state: Tuple[ExprNode, Tensor, Tensor] = field(default_factory=lambda: (None, None, None))
     current_name: Optional[str] = None
     nc: Optional[int] = None
+    action_record: deque = field(default_factory=lambda: deque(maxlen=ACTION_MEMORY_LENGTH))
 
     def Expr_Node_from_sympy(self, expr: Union[str, sp.Expr], evaluate: bool = True) -> ExprNode:
         if isinstance(expr, str):
@@ -137,6 +142,26 @@ class SympleState:
     def substitute_current_node(self, new_node: ExprNode) -> None:
         self.en = self.en.apply_at_coord(self.coord, lambda x: new_node)
 
+    @property
+    def state_tensor(self) -> Tensor:
+
+        # Encode the last action taken (6 digits binary representation)
+        last_action_encoding = torch.zeros(6, dtype=torch.float32)
+        action_binary = format(self.action_record[-1]+1, '06b') if self.action_record else '000000'
+        last_action_encoding = torch.tensor([int(bit) for bit in action_binary], dtype=torch.float32)
+
+        # Calculate normalized node counts
+        current_node_count = self.current_node.node_count() / 64.0
+        state_node_count = self.en.node_count() / 64.0
+
+        # Concatenate the vectors
+        state_tensor = torch.cat([
+            last_action_encoding,
+            torch.tensor([current_node_count], dtype=torch.float32),
+            torch.tensor([state_node_count], dtype=torch.float32)
+        ]).unsqueeze(0)  # Add batch dimension
+
+        return state_tensor
     
     def update(self) -> None:
         name = self.current_name
