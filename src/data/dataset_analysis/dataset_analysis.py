@@ -20,13 +20,16 @@ df[df.columns[:3]] = df[df.columns[:3]].map(sympify)
 output_dir = os.path.join(ROOT_DIR, "src/data/dataset_analysis")
 os.makedirs(output_dir, exist_ok=True)
 
-df["difficulty"].plot(kind="hist", bins=20, title="difficulty")
-plt.gca().spines[
-    [
-        "top",
-        "right",
-    ]
-].set_visible(False)
+difficulty_mean = df["difficulty"].mean()
+difficulty_std = df["difficulty"].std()
+
+plt.figure(figsize=(10, 6))
+df["difficulty"].hist(bins=20)
+plt.axvline(difficulty_mean, color='r', linestyle='dashed', linewidth=2)
+plt.title(f"Difficulty Distribution\nMean: {difficulty_mean:.2f}, Std: {difficulty_std:.2f}")
+plt.xlabel("Difficulty")
+plt.ylabel("Frequency")
+plt.gca().spines[["top", "right"]].set_visible(False)
 plt.savefig(os.path.join(output_dir, "difficulty.png"))
 plt.close()
 
@@ -81,7 +84,8 @@ print(f"Standard deviation of node count difference: {std_node_count_diff:.2f}")
 # Visualize the distribution of node count difference
 plt.figure(figsize=(10, 6))
 plt.hist(node_count_diff, bins=30, edgecolor='black')
-plt.title('Distribution of Node Count Difference (expr - simplified)')
+plt.axvline(avg_node_count_diff, color='r', linestyle='dashed', linewidth=2)
+plt.title(f'Distribution of Node Count Difference (expr - simplified)\nMean: {avg_node_count_diff:.2f}, Std: {std_node_count_diff:.2f}')
 plt.xlabel('Node Count Difference')
 plt.ylabel('Frequency')
 plt.gca().spines[['top', 'right']].set_visible(False)
@@ -119,7 +123,8 @@ print(f"Standard deviation of ExprNode count difference: {std_expr_node_count_di
 # Visualize the distribution of ExprNode count difference
 plt.figure(figsize=(10, 6))
 plt.hist(expr_node_count_diff, bins=30, edgecolor='black')
-plt.title('Distribution of ExprNode Count Difference (expr - simplified)')
+plt.axvline(avg_expr_node_count_diff, color='r', linestyle='dashed', linewidth=2)
+plt.title(f'Distribution of ExprNode Count Difference (expr - simplified)\nMean: {avg_expr_node_count_diff:.2f}, Std: {std_expr_node_count_diff:.2f}')
 plt.xlabel('ExprNode Count Difference')
 plt.ylabel('Frequency')
 plt.gca().spines[['top', 'right']].set_visible(False)
