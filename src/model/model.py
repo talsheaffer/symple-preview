@@ -83,6 +83,9 @@ class SympleAgent(nn.Module):
         self.internal_actor = FFN(self.hidden_size + self.global_hidden_size, self.hidden_size, self.num_internal_ops, n_layers=ffn_n_layers)
         self.actor = FFN(self.hidden_size + self.global_hidden_size, self.hidden_size, self.num_ops, n_layers=ffn_n_layers)
 
+        # Value function estimator
+        self.value_function = FFN(self.hidden_size + self.global_hidden_size, self.hidden_size, 1, n_layers=ffn_n_layers)
+
         # internal ops and their compute complexity. Including certain compositions of elementary internal ops
         self.ffn_complexity = self.hidden_size**2 * self.ffn.n_layers
         self.glstm_complexity = 4 * (self.global_hidden_size * (self.hidden_size + self.global_hidden_size) * self.lstm.num_layers)
@@ -288,6 +291,21 @@ class SympleAgent(nn.Module):
 
         return p_high, p_internal, p_ext, p_teleport
 
+    def estimate_value(self, state: SympleState) -> torch.Tensor:
+        """
+        Estimates the value of the current state.
+
+        Args:
+            state (SympleState): The current state.
+
+        Returns:
+            torch.Tensor: The estimated value of the state.
+        """
+        current_node = state.current_node
+        features = torch.cat([current_node.hidden, state.h_glob[-1]], dim=-1)
+        value = self.value_function(features)
+        return value
+
     def step(self, state: SympleState, env: Symple, can_finish: bool = True, temperature: float = 1.) -> Tuple[SympleState, bool, Dict]:
         """
         Performs a single step in the environment.
@@ -303,6 +321,9 @@ class SympleAgent(nn.Module):
         """
         current_node = state.en.get_node(state.coord)
         features = torch.cat([current_node.hidden, state.h_glob[-1]], dim=-1)
+
+        # Estimate value before taking action
+        value = self.estimate_value(state)
 
         high_level_mask = torch.ones((1, len(self.high_level_op_indices)), device=self.device, dtype=DEFAULT_DTYPE)
         if not can_finish:
@@ -380,7 +401,8 @@ class SympleAgent(nn.Module):
             'complexity': complexity,
             'coordinates': state.coord,
             'reward': reward,
-            'node_count_reduction': node_count_reduction
+            'node_count_reduction': node_count_reduction,
+            'value': value if self.training else value.item()
         }
         return state, done, event
 
@@ -397,6 +419,9 @@ class SympleAgent(nn.Module):
         Returns:
             Tuple[SympleState, bool, Dict]: The new state, whether the episode is done, and event information.
         """
+        # Estimate value before taking action
+        value = self.estimate_value(state)
+
         high_level_action = torch.multinomial(behavior_probs['high_level'], 1).item()
         behavior_high_level_action_prob = behavior_probs['high_level'][:, high_level_action]
         target_high_level_action_prob = target_probs['high_level'][:, high_level_action]
@@ -431,6 +456,7 @@ class SympleAgent(nn.Module):
 
             reward = env.time_penalty
             node_count_reduction = 0
+            complexity = 0.0
         
         elif high_level_action == 'finish':
             target_prob = torch.ones(1)
@@ -439,6 +465,7 @@ class SympleAgent(nn.Module):
             reward = 0
             node_count_reduction = 0
             action = 0
+            complexity = 0.0
 
         else:
             raise ValueError(f"Invalid high-level action: {high_level_action}")
@@ -451,10 +478,11 @@ class SympleAgent(nn.Module):
             'action': action,
             'target_probability': target_prob if self.training else target_prob.item(),
             'behavior_probability': behavior_prob.detach() if self.training else behavior_prob.item(),
-            'complexity': 0.0,
+            'complexity': complexity,
             'coordinates': state.coord,
             'reward': reward,
-            'node_count_reduction': node_count_reduction
+            'node_count_reduction': node_count_reduction,
+            'value': value if self.training else value.item()
         }
         return state, done, event
             
