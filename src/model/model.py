@@ -22,7 +22,7 @@ def compose(f, g):
 def with_kwargs(f, **kwargs):
     return lambda *args: f(*args, **kwargs)
 
-NUM_INTERNAL_OPS = 5
+NUM_INTERNAL_OPS = 9
 INTERNAL_OPS = [
     (lambda agent: agent.apply_ffn, lambda agent: (lambda state: agent.ffn_complexity), 'ffn'),
     (
@@ -70,8 +70,9 @@ class SympleAgent(nn.Module):
         self.vocab_size = VOCAB_SIZE
         self.num_ops = NUM_OPS
         self.num_internal_ops = NUM_INTERNAL_OPS
-        self.feature_size = self.hidden_size + self.global_hidden_size + 8
-        self.global_lstm_input_size = self.hidden_size + 8
+        self.feature_size = self.hidden_size + self.global_hidden_size + 32
+        self.global_lstm_input_size = self.hidden_size + 32
+        self.ffn_hidden_size = self.feature_size
 
         # nn modules
         self.blstm = NaryTreeLSTM(2, self.vocab_size, self.hidden_size)
@@ -80,13 +81,13 @@ class SympleAgent(nn.Module):
         self.ffn = FFN(self.hidden_size, self.hidden_size, self.hidden_size, n_layers=ffn_n_layers)
 
         # FFNs for high-level and internal decisions
-        self.high_level_actor = FFN(self.feature_size, self.hidden_size, 4, n_layers=ffn_n_layers)  # Changed to 4 for teleport and finish actions
+        self.high_level_actor = FFN(self.feature_size, self.ffn_hidden_size, 4, n_layers=ffn_n_layers)  # Changed to 4 for teleport and finish actions
         self.teleport_ffn = FFN(self.feature_size, self.hidden_size, 1, n_layers=ffn_n_layers)
-        self.internal_actor = FFN(self.feature_size, self.hidden_size, self.num_internal_ops, n_layers=ffn_n_layers)
-        self.actor = FFN(self.feature_size, self.hidden_size, self.num_ops, n_layers=ffn_n_layers)
+        self.internal_actor = FFN(self.feature_size, self.ffn_hidden_size, self.num_internal_ops, n_layers=ffn_n_layers)
+        self.actor = FFN(self.feature_size, self.ffn_hidden_size, self.num_ops, n_layers=ffn_n_layers)
 
         # Value function estimator
-        self.value_function = FFN(self.feature_size, self.hidden_size, 1, n_layers=ffn_n_layers)
+        self.value_function = FFN(self.feature_size, self.ffn_hidden_size, 1, n_layers=ffn_n_layers)
 
         # internal ops and their compute complexity. Including certain compositions of elementary internal ops
         self.ffn_complexity = self.hidden_size**2 * self.ffn.n_layers
