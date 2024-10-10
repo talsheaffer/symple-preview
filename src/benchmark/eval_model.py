@@ -6,10 +6,11 @@ import torch
 import pandas as pd
 from sympy import sympify
 
-from src.model.model import SympleAgent
+from src.model.model import SympleAgent, INTERNAL_OPS
 from src.model.state import SympleState
 from src.model.environment import Symple
 from definitions import ROOT_DIR
+from src.model.actions import OPS_MAP
 
 # Load the dataset
 dataset_path = os.path.join(ROOT_DIR, "data","dataset.json")
@@ -67,6 +68,11 @@ def run_agent(expr: SympleState, agent: SympleAgent, env: Symple, **agent_forwar
     eval_time = end_time - start_time
     ncr = sum([step['node_count_reduction'] for step in history])
     action_sequence = [(step['action_type'], step['action']) for step in history]
+    for i, (action_type, action) in enumerate(action_sequence):
+        if action_type == 'external':
+            action_sequence[i] = OPS_MAP[action].name
+        elif action_type == 'internal':
+            action_sequence[i] = INTERNAL_OPS[action][-1]
     
     return {
         'eval_time': eval_time,
