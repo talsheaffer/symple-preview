@@ -127,8 +127,25 @@ class TestSympleAgent(unittest.TestCase):
             final_sympy = final_state.to_sympy()
             self.assertTrue(check_equality(expr, final_sympy),
                             f"Expressions not equal:\nOriginal: {expr}\nFinal: {final_sympy}")
+    
 
-
+    def test_agent_with_action_record(self):
+        for expr in expressions:
+            history, final_state = self.agent(
+                expr,
+                min_steps=20,
+                max_steps=1000
+            )
+            
+            self.assertGreater(len(history), 0)
+            self.assertIsInstance(history, list)
+            self.assertIsInstance(final_state, SympleState)
+            
+            recorded_external_actions = [event['action'] for event in history if event['action_type'] == 'external'][-len(final_state.action_record):]
+            self.assertEqual(list(final_state.action_record), recorded_external_actions,
+                             f"Recorded actions in state do not match external actions in history:\n"
+                             f"State record: {final_state.action_record}\n"
+                             f"History external actions: {recorded_external_actions}")
 
 if __name__ == "__main__":
      unittest.main()
