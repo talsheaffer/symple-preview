@@ -144,11 +144,15 @@ class SympleState:
 
     @property
     def state_tensor(self) -> Tensor:
+        """
+        Returns a tensor representation of the current state.
+        """
 
-        # Encode the last action taken (6 digits binary representation)
-        last_action_encoding = torch.zeros(6, dtype=torch.float32)
-        action_binary = format(self.action_record[-1]+1, '06b') if self.action_record else '000000'
-        last_action_encoding = torch.tensor([int(bit) for bit in action_binary], dtype=torch.float32)
+        # Encode the last action taken (one-hot encoding with vector of length 30)
+        last_action_encoding = torch.zeros(30, dtype=torch.float32)
+        if self.action_record:
+            last_action = self.action_record[-1]
+            last_action_encoding[last_action] = 1.0
 
         # Calculate normalized node counts
         current_node_count = self.current_node.node_count() / 64.0
