@@ -1,5 +1,6 @@
 import time
 import os
+import yaml
 
 import sympy as sp
 
@@ -10,9 +11,10 @@ from datetime import datetime
 import torch
 
 # from src.model.environment import Symple
-from src.model.model import SympleAgent
+from src.model.model import SympleAgent, NUM_INTERNAL_OPS
 from src.model.training import train_on_batch
 from src.model.state import SympleState
+from src.model.environment import TIME_PENALTY, COMPUTE_PENALTY_COEFFICIENT
 
 from definitions import ROOT_DIR
 
@@ -26,7 +28,7 @@ timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 training_data_dir = os.path.join(ROOT_DIR, "train", "training_data")
 os.makedirs(training_data_dir, exist_ok=True)
 json_filename = os.path.join(training_data_dir, f"training_data_{timestamp}.json")
-
+metadata_filename = os.path.join(training_data_dir, f"metadata_{timestamp}.yaml")
 
 model_save_dir = os.path.join(ROOT_DIR, 'train', 'models')
 os.makedirs(model_save_dir, exist_ok=True)
@@ -73,28 +75,67 @@ if model_path:
 else:
     print('Using untrained model.')
 
-
-
 def save_model(model,suffix=''):
     torch.save(model.state_dict(), model_save_path+suffix+'.pth')
     print(f"Model state dict saved to: {model_save_path+suffix+'.pth'}")
 
-
-
 # Define learning rate schedule
-initial_lr = 0.00005
+initial_lr = 0.001
 lr_decay_factor = 0.9
 
 # Initialize Adam optimizer
+weight_decay = 0.001
 optimizer = torch.optim.Adam(
     agent.parameters(),
     lr=initial_lr,
-    weight_decay = 0.001
+    weight_decay = weight_decay
 )
-
 # Training loop
 num_epochs = 2
 batch_size = 32
+
+metadata = {
+    'model_hyperparameters': {
+        'hidden_size': agent.hidden_size,
+        'global_hidden_size': agent.global_hidden_size,
+        'ffn_n_layers': agent.ffn.n_layers,
+        'lstm_n_layers': agent.lstm.num_layers,
+        'num_internal_ops': NUM_INTERNAL_OPS,
+        'num_external_ops': agent.num_ops
+    },
+    'last_training_epoch': 0,
+    'environment_parameters': {
+        'time_penalty': TIME_PENALTY,
+        'compute_penalty_coefficient': COMPUTE_PENALTY_COEFFICIENT
+    },
+    'training_parameters': {
+        'behavior_policy': str(None),
+        'min_steps': 5,
+        'max_steps': 250,
+        'initial_lr': initial_lr,
+        'lr_decay_factor': lr_decay_factor,
+        'batch_size': batch_size,
+        'num_epochs': num_epochs
+    },
+    'optimizer': {
+        'type': 'Adam',
+        'lr': initial_lr,
+        'current_lr': initial_lr,
+        'weight_decay': weight_decay
+    }
+}
+
+with open(metadata_filename, 'w') as f:
+    yaml.dump(metadata, f)
+
+# Save model parameters in a metadata file
+model_params_filename = os.path.join(model_save_dir, f"model_params_{timestamp}.yaml")
+model_params = metadata['model_hyperparameters']
+
+with open(model_params_filename, 'w') as f:
+    yaml.dump(model_params, f)
+
+print(f"Model parameters saved to: {model_params_filename}")
 
 
 total_time = 0
@@ -102,16 +143,12 @@ returns = []
 total_time = 0
 eval_times = []
 
-
 training_data = []
-
-# # Initialize value function estimate
-# V = torch.zeros(1, device=agent.device)
 
 overall_batch_num = 0
 
 for epoch in range(1, num_epochs + 1):
-    behavior_policy = ('temperature', 1.5 + .15 * (epoch - 1)) if epoch < 10 else None
+    behavior_policy = ('temperature', 1.5 + .1 * (epoch - 1)) if epoch < 10 else None
     # behavior_policy = None
     print(f"Epoch {epoch}/{num_epochs}, Behavior Policy: {behavior_policy}")
     # Update learning rate based on epoch
@@ -149,7 +186,6 @@ for epoch in range(1, num_epochs + 1):
         batch_time = end_time - start_time
         total_time += batch_time
         
-
         # Compute and verify node count reduction
         for input_expr, output_expr, history in zip(
             shuffled_data[i:i+batch_size].tolist(), output_expr_nodes, batch_history
@@ -204,6 +240,14 @@ for epoch in range(1, num_epochs + 1):
     # Save the model state dict
     save_model(agent)
 
+    metadata['last_training_epoch'] = epoch
+    metadata['training_parameters']['behavior_policy'] = str(behavior_policy)
+    metadata['optimizer']['current_lr'] = current_lr
+    
+    with open(metadata_filename, 'w') as f:
+        yaml.dump(metadata, f)
+
 avg_time_per_batch = total_time / (num_epochs * (len(df) // batch_size))
 print(f"Training completed. Average time per batch: {avg_time_per_batch:.4f} seconds")
 print(f"Training data saved to: {json_filename}")
+print(f"Metadata saved to: {metadata_filename}")
