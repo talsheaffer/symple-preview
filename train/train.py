@@ -80,7 +80,7 @@ def save_model(model,suffix=''):
     print(f"Model state dict saved to: {model_save_path+suffix+'.pth'}")
 
 # Define learning rate schedule
-initial_lr = 0.001
+initial_lr = 0.00005
 lr_decay_factor = 0.9
 
 # Initialize Adam optimizer
@@ -129,7 +129,7 @@ with open(metadata_filename, 'w') as f:
     yaml.dump(metadata, f)
 
 # Save model parameters in a metadata file
-model_params_filename = os.path.join(model_save_dir, f"model_params_{timestamp}.yaml")
+model_params_filename = os.path.join(model_save_dir, f"model_hyperparams_{timestamp}.yaml")
 model_params = metadata['model_hyperparameters']
 
 with open(model_params_filename, 'w') as f:
@@ -148,7 +148,7 @@ training_data = []
 overall_batch_num = 0
 
 for epoch in range(1, num_epochs + 1):
-    behavior_policy = ('temperature', 1.5 + .1 * (epoch - 1)) if epoch < 10 else None
+    behavior_policy = ('temperature', 1.5 + .2 * (epoch - 1)) if epoch < 10 else None
     # behavior_policy = None
     print(f"Epoch {epoch}/{num_epochs}, Behavior Policy: {behavior_policy}")
     # Update learning rate based on epoch
