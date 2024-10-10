@@ -6,7 +6,7 @@ from src.model.actions import OPS_MAP
 from src.model.state import SympleState
 
 
-TIME_PENALTY = -0.001
+TIME_PENALTY = -0.1
 NODE_COUNT_IMPORTANCE_FACTOR = 1.0
 COMPUTE_PENALTY_COEFFICIENT = 1e-9
 
