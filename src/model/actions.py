@@ -177,3 +177,15 @@ OPS_MAP.append(action)
 action = Action(can_evaluate_symbol, evaluate_symbol)
 action.name = "Evaluate symbol"
 OPS_MAP.append(action)
+
+
+def record_action_wrapper(action: Callable[[SympleState], Tuple[SympleState, int]], index: int) -> Callable[[SympleState], Tuple[SympleState, int]]:
+    def wrapper(state: SympleState) -> Tuple[SympleState, int]:
+        state, reward = action(state)
+        state.action_record.append(index)
+        return state, reward
+    return wrapper
+
+for i, action in enumerate(OPS_MAP):
+    action.apply = record_action_wrapper(action.apply, i)
+
