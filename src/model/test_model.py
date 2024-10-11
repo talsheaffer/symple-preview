@@ -141,7 +141,11 @@ class TestSympleAgent(unittest.TestCase):
             self.assertIsInstance(history, list)
             self.assertIsInstance(final_state, SympleState)
             
-            recorded_external_actions = [event['action'] for event in history if event['action_type'] == 'external'][-len(final_state.action_record):]
+            recorded_external_actions = [
+                (
+                    event['action'] if event['action_type'] == 'external' else final_state.teleport_index
+                ) for event in history if event['action_type'] in ['external', 'teleport']
+            ][-len(final_state.action_record):]
             self.assertEqual(list(final_state.action_record), recorded_external_actions,
                              f"Recorded actions in state do not match external actions in history:\n"
                              f"State record: {final_state.action_record}\n"

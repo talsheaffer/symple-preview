@@ -12,7 +12,7 @@ import sympy as sp
 from torch import Tensor
 
 ACTION_MEMORY_LENGTH = 10
-
+TELEPORT_INDEX = 29
 
 class SymbolManager(dict):
     def __init__(self):
@@ -51,6 +51,7 @@ class SympleState:
     current_name: Optional[str] = None
     nc: Optional[int] = None
     action_record: deque = field(default_factory=lambda: deque(maxlen=ACTION_MEMORY_LENGTH))
+    teleport_index: int = TELEPORT_INDEX
 
     def Expr_Node_from_sympy(self, expr: Union[str, sp.Expr], evaluate: bool = True) -> ExprNode:
         if isinstance(expr, str):
@@ -149,7 +150,7 @@ class SympleState:
         """
 
         # Encode the last action taken (one-hot encoding with vector of length 30)
-        last_action_encoding = torch.zeros(30, dtype=torch.float32)
+        last_action_encoding = torch.zeros(self.teleport_index+1, dtype=torch.float32)
         if self.action_record:
             last_action = self.action_record[-1]
             last_action_encoding[last_action] = 1.0
