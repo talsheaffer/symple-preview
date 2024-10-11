@@ -66,7 +66,8 @@ agent = SympleAgent(
     hidden_size = 128,
     global_hidden_size=256,
     ffn_n_layers=3,
-    lstm_n_layers=3
+    lstm_n_layers=3,
+    temperature=0.2
 )
 
 if model_path:
@@ -80,8 +81,8 @@ def save_model(model,suffix=''):
     print(f"Model state dict saved to: {model_save_path+suffix+'.pth'}")
 
 # Define learning rate schedule
-initial_lr = 0.00005
-lr_decay_factor = 0.9
+initial_lr = 0.001
+lr_decay_factor = 1.0
 
 # Initialize Adam optimizer
 weight_decay = 0.001
@@ -101,7 +102,8 @@ metadata = {
         'ffn_n_layers': agent.ffn.n_layers,
         'lstm_n_layers': agent.lstm.num_layers,
         'num_internal_ops': NUM_INTERNAL_OPS,
-        'num_external_ops': agent.num_ops
+        'num_external_ops': agent.num_ops,
+        'temperature': agent.temperature
     },
     'last_training_epoch': 0,
     'environment_parameters': {
@@ -148,8 +150,8 @@ training_data = []
 overall_batch_num = 0
 
 for epoch in range(1, num_epochs + 1):
-    behavior_policy = ('temperature', 1.5 + .2 * (epoch - 1)) if epoch < 10 else None
-    # behavior_policy = None
+    # behavior_policy = ('temperature', 1.5 + .2 * (epoch - 1)) if epoch < 10 else None
+    behavior_policy = None
     print(f"Epoch {epoch}/{num_epochs}, Behavior Policy: {behavior_policy}")
     # Update learning rate based on epoch
     if epoch < 30:

@@ -54,7 +54,7 @@ for i in range(NUM_INTERNAL_OPS-3):
 
 class SympleAgent(nn.Module):
     """
-    Currently only actor, no critic.
+    Q-learning based agent.
     """
 
     def __init__(
@@ -63,6 +63,7 @@ class SympleAgent(nn.Module):
         global_hidden_size: Optional[int] = None,
         ffn_n_layers: int = 1,
         lstm_n_layers: int = 1,
+        temperature: float = 1.0,
     ):
         super(SympleAgent, self).__init__()
         self.hidden_size = hidden_size
@@ -73,6 +74,7 @@ class SympleAgent(nn.Module):
         self.feature_size = self.hidden_size + self.global_hidden_size + 32
         self.global_lstm_input_size = self.hidden_size + 32
         self.ffn_hidden_size = self.feature_size
+        self.temperature = temperature
 
         # nn modules
         self.blstm = NaryTreeLSTM(2, self.vocab_size, self.hidden_size)
@@ -80,18 +82,15 @@ class SympleAgent(nn.Module):
         self.lstm = nn.LSTM(self.global_lstm_input_size, self.global_hidden_size, num_layers=lstm_n_layers, batch_first=True)
         self.ffn = FFN(self.hidden_size, self.hidden_size, self.hidden_size, n_layers=ffn_n_layers)
 
-        # FFNs for high-level and internal decisions
-        self.high_level_actor = FFN(self.feature_size, self.ffn_hidden_size, 4, n_layers=ffn_n_layers)  # Changed to 4 for teleport and finish actions
-        self.teleport_ffn = FFN(self.feature_size, self.hidden_size, 1, n_layers=ffn_n_layers)
-        self.internal_actor = FFN(self.feature_size, self.ffn_hidden_size, self.num_internal_ops, n_layers=ffn_n_layers)
-        self.actor = FFN(self.feature_size, self.ffn_hidden_size, self.num_ops, n_layers=ffn_n_layers)
-
-        # Value function estimator
-        self.value_function = FFN(self.feature_size, self.ffn_hidden_size, 1, n_layers=ffn_n_layers)
+        # FFNs for high-level and specific action Q-values
+        self.q_high = FFN(self.feature_size, self.ffn_hidden_size, 4, n_layers=ffn_n_layers)  # Changed to 4 for teleport and finish actions
+        self.q_teleport = FFN(self.feature_size, self.hidden_size, 1, n_layers=ffn_n_layers)
+        self.q_internal = FFN(self.feature_size, self.ffn_hidden_size, self.num_internal_ops, n_layers=ffn_n_layers)
+        self.q_external = FFN(self.feature_size, self.ffn_hidden_size, self.num_ops, n_layers=ffn_n_layers)
 
         # internal ops and their compute complexity. Including certain compositions of elementary internal ops
         self.ffn_complexity = self.hidden_size**2 * self.ffn.n_layers
-        self.teleport_ffn_complexity =  self.hidden_size * (self.feature_size + self.hidden_size * self.teleport_ffn.n_layers + 1)
+        self.teleport_ffn_complexity =  self.hidden_size * (self.feature_size + self.hidden_size * self.q_teleport.n_layers + 1)
         self.glstm_complexity = 4 * (self.global_hidden_size * self.global_lstm_input_size * self.lstm.num_layers)
         self.blstm_complexity = 4 * (self.hidden_size * (self.vocab_size + self.hidden_size) * 2) 
         self.tlstm_complexity = 4 * (self.hidden_size * (self.vocab_size + self.hidden_size) * 3)
@@ -182,8 +181,8 @@ class SympleAgent(nn.Module):
         combined_hidden_list = [node.hidden for _, node in coords_and_nodes]
         combined_hidden = torch.cat(combined_hidden_list, dim=0)
         features = torch.cat([h_glob, combined_hidden, state_tensor], dim=-1)
-        teleport_logits = self.teleport_ffn(features).transpose(-1, -2)
-        return teleport_logits
+        teleport_q_values = self.q_teleport(features).transpose(-1, -2)
+        return teleport_q_values
     
     def apply_binary_lstm(self, input: ExprNode, depth: int = inf) -> ExprNode:
         """
@@ -266,9 +265,9 @@ class SympleAgent(nn.Module):
         state.substitute_current_node(current_node)
         return state
     
-    def get_policy_logits(self, state: SympleState, validity_mask: torch.Tensor, high_level_mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def get_q_values(self, state: SympleState, validity_mask: torch.Tensor, high_level_mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
-        Computes the policy logits for the current state.
+        Computes the Q-values for the current state.
 
         Args:
             state (SympleState): The current state.
@@ -276,59 +275,43 @@ class SympleAgent(nn.Module):
             high_level_mask (Optional[torch.Tensor], optional): Mask for high-level actions. Defaults to None.
 
         Returns:
-            Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]: Logits for high-level, internal, external, and teleport actions.
+            Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]: Q-values for high-level, internal, external, and teleport actions.
         """
         current_node = state.en.get_node(state.coord)
         features = torch.cat([current_node.hidden, state.h_glob[-1], state.state_tensor], dim=-1)
 
-        l_high = self.high_level_actor(features)
+        q_high = self.q_high(features)
         if high_level_mask is not None:
-            l_high = l_high + high_level_mask.log()
+            q_high = q_high + high_level_mask.log()
 
-        l_internal = self.internal_actor(features)
-        l_ext = self.actor(features) + validity_mask.log()
+        q_internal = self.q_internal(features)
+        q_ext = self.q_external(features) + validity_mask.log()
 
-        l_teleport = self.apply_teleport_ffn(state)
+        q_teleport = self.apply_teleport_ffn(state)
 
-        return l_high, l_internal, l_ext, l_teleport
+        return q_high, q_internal, q_ext, q_teleport
     
-    def policy(self, state: SympleState, validity_mask: torch.Tensor, high_level_mask: Optional[torch.Tensor] = None, temperature: float = 1.) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def policy(self, state: SympleState, validity_mask: torch.Tensor, high_level_mask: Optional[torch.Tensor] = None) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
-        Computes the policy probabilities for the current state.
+        Computes the policy probabilities for the current state based on Q-values.
 
         Args:
             state (SympleState): The current state.
             validity_mask (torch.Tensor): Mask for valid actions.
             high_level_mask (Optional[torch.Tensor], optional): Mask for high-level actions. Defaults to None.
-            temperature (float, optional): Temperature for softmax. Defaults to 1.
 
         Returns:
             Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]: Probabilities for high-level, internal, external, and teleport actions.
         """
-        l_high, l_internal, l_ext, l_teleport = self.get_policy_logits(state, validity_mask, high_level_mask)
-        p_high = F.softmax(l_high / temperature, dim=-1)
-        p_internal = F.softmax(l_internal / temperature, dim=-1)
-        p_ext = F.softmax(l_ext / temperature, dim=-1)
-        p_teleport = F.softmax(l_teleport / temperature, dim=-1)
+        q_high, q_internal, q_ext, q_teleport = self.get_q_values(state, validity_mask, high_level_mask)
+        p_high = F.softmax(q_high / self.temperature, dim=-1)
+        p_internal = F.softmax(q_internal / self.temperature, dim=-1)
+        p_ext = F.softmax(q_ext / self.temperature, dim=-1)
+        p_teleport = F.softmax(q_teleport / self.temperature, dim=-1)
 
         return p_high, p_internal, p_ext, p_teleport
 
-    def estimate_value(self, state: SympleState) -> torch.Tensor:
-        """
-        Estimates the value of the current state.
-
-        Args:
-            state (SympleState): The current state.
-
-        Returns:
-            torch.Tensor: The estimated value of the state.
-        """
-        current_node = state.current_node
-        features = torch.cat([current_node.hidden, state.h_glob[-1], state.state_tensor], dim=-1)
-        value = self.value_function(features)
-        return value
-
-    def step(self, state: SympleState, env: Symple, can_finish: bool = True, temperature: float = 1.) -> Tuple[SympleState, bool, Dict]:
+    def step(self, state: SympleState, env: Symple, can_finish: bool = True) -> Tuple[SympleState, bool, Dict]:
         """
         Performs a single step in the environment.
 
@@ -336,7 +319,6 @@ class SympleAgent(nn.Module):
             state (SympleState): The current state.
             env (Symple): The environment.
             can_finish (bool, optional): Whether the agent can finish. Defaults to True.
-            temperature (float, optional): Temperature for softmax. Defaults to 1.
 
         Returns:
             Tuple[SympleState, bool, Dict]: The new state, whether the episode is done, and event information.
@@ -344,16 +326,13 @@ class SympleAgent(nn.Module):
         current_node = state.en.get_node(state.coord)
         features = torch.cat([current_node.hidden, state.h_glob[-1], state.state_tensor], dim=-1)
 
-        # Estimate value before taking action
-        value = self.estimate_value(state)
-
         high_level_mask = torch.ones((1, len(self.high_level_op_indices)), device=self.device, dtype=DEFAULT_DTYPE)
         if not can_finish:
             high_level_mask[0, self.high_level_op_indices['finish']] = 0
 
-        l_high = self.high_level_actor(features) + high_level_mask.log()
+        q_high = self.q_high(features) + high_level_mask.log()
 
-        high_level_probs = F.softmax(l_high / temperature, dim=-1)
+        high_level_probs = F.softmax(q_high / self.temperature, dim=-1)
 
         high_level_action = torch.multinomial(high_level_probs, 1).item()
         high_level_action_prob = high_level_probs[:, high_level_action]
@@ -362,27 +341,29 @@ class SympleAgent(nn.Module):
         done = False
 
         if high_level_action == 'internal':
-            l_internal = self.internal_actor(features)
-            internal_probs = F.softmax(l_internal / temperature, dim=-1)
+            q_internal = self.q_internal(features)
+            internal_probs = F.softmax(q_internal / self.temperature, dim=-1)
             action = torch.multinomial(internal_probs, 1).item()
             internal_action_prob = internal_probs[:, action]
 
             prob = internal_action_prob * high_level_action_prob
+            q_value = q_high[0, self.high_level_op_indices['internal']] + q_internal[0, action]
 
             state, complexity = self.apply_internal_op(state, action)
             reward = env.time_penalty - env.compute_penalty_coefficient * complexity
             node_count_reduction = 0
 
         elif high_level_action == 'teleport':
-            l_teleport = self.apply_teleport_ffn(state)
+            q_teleport = self.apply_teleport_ffn(state)
 
-            teleport_probs = F.softmax(l_teleport / temperature, dim=-1)
+            teleport_probs = F.softmax(q_teleport / self.temperature, dim=-1)
             action = torch.multinomial(teleport_probs, 1).item()
             teleport_action_prob = teleport_probs[:, action]
 
             state.coord = state.en.get_coords()[action]
 
             prob = teleport_action_prob * high_level_action_prob
+            q_value = q_high[0, self.high_level_op_indices['teleport']] + q_teleport[0, action]
 
             reward = env.time_penalty
             node_count_reduction = 0
@@ -390,15 +371,16 @@ class SympleAgent(nn.Module):
 
         elif high_level_action == 'external':
             validity_mask = env.get_validity_mask(state)
-            l_ext = self.actor(features) + validity_mask.log()
+            q_ext = self.q_external(features) + validity_mask.log()
 
-            action_probs = F.softmax(l_ext / temperature, dim=-1)
+            action_probs = F.softmax(q_ext / self.temperature, dim=-1)
             action = torch.multinomial(action_probs, 1).item()
             action_prob = action_probs[:, action]
 
             state, reward, node_count_reduction = env.step(state, action)
 
             prob = action_prob * high_level_action_prob
+            q_value = q_high[0, self.high_level_op_indices['external']] + q_ext[0, action]
 
             complexity = 0.0
 
@@ -410,6 +392,7 @@ class SympleAgent(nn.Module):
             complexity = 0.0
 
             prob = high_level_action_prob
+            q_value = q_high[0, self.high_level_op_indices['finish']]
         else:
             raise ValueError(f"Invalid high-level action: {high_level_action}")
         
@@ -421,7 +404,7 @@ class SympleAgent(nn.Module):
             'coordinates': state.coord,
             'reward': reward,
             'node_count_reduction': node_count_reduction,
-            'value': value if self.training else value.item()
+            'q_value': q_value if self.training else q_value.item()
         }
         return state, done, event
 
@@ -438,9 +421,6 @@ class SympleAgent(nn.Module):
         Returns:
             Tuple[SympleState, bool, Dict]: The new state, whether the episode is done, and event information.
         """
-        # Estimate value before taking action
-        value = self.estimate_value(state)
-
         high_level_action = torch.multinomial(behavior_probs['high_level'], 1).item()
         behavior_high_level_action_prob = behavior_probs['high_level'][:, high_level_action]
         target_high_level_action_prob = target_probs['high_level'][:, high_level_action]
@@ -501,7 +481,6 @@ class SympleAgent(nn.Module):
             'coordinates': state.coord,
             'reward': reward,
             'node_count_reduction': node_count_reduction,
-            'value': value if self.training else value.item()
         }
         return state, done, event
             
@@ -525,7 +504,11 @@ class SympleAgent(nn.Module):
         if not can_finish:
             high_level_mask[0, self.high_level_op_indices['finish']] = 0
 
-        target_high_probs, target_internal_probs, target_ext_probs, target_teleport_probs = self.policy(state, validity_mask, high_level_mask)
+        q_high, q_internal, q_ext, q_teleport = self.get_q_values(state, validity_mask, high_level_mask)
+        target_high_probs = F.softmax(q_high / self.temperature, dim=-1)
+        target_internal_probs = F.softmax(q_internal / self.temperature, dim=-1)
+        target_ext_probs = F.softmax(q_ext / self.temperature, dim=-1)
+        target_teleport_probs = F.softmax(q_teleport / self.temperature, dim=-1)
         target_probs = {
             'high_level': target_high_probs,
             'internal': target_internal_probs,
@@ -553,18 +536,31 @@ class SympleAgent(nn.Module):
             'teleport': behavior_teleport_probs
         }
 
-        return self.off_policy_step_from_probs(state, env, target_probs, behavior_probs)
+        state, done, event = self.off_policy_step_from_probs(state, env, target_probs, behavior_probs)
+        high_level_action = event['action_type']
+        action = event['action']
+        if high_level_action == 'internal':
+            q_value = q_high[0, self.high_level_op_indices['internal']] + q_internal[0, action]
+        elif high_level_action == 'external':
+            q_value = q_high[0, self.high_level_op_indices['external']] + q_ext[0, action]
+        elif high_level_action == 'teleport':
+            q_value = q_high[0, self.high_level_op_indices['teleport']] + q_teleport[0, action]
+        elif high_level_action == 'finish':
+            q_value = q_high[0, self.high_level_op_indices['finish']]
+        else:
+            raise ValueError(f"Invalid high-level action: {high_level_action}")
+        event['q_value'] = q_value
+        return state, done, event
 
 
-
-    def off_policy_step_with_temp(self, state: SympleState, env: Symple, temperature: float, can_finish: bool = True) -> Tuple[SympleState, bool, Dict]:
+    def off_policy_step_with_temp(self, state: SympleState, env: Symple, behavior_temperature: float, can_finish: bool = True) -> Tuple[SympleState, bool, Dict]:
         """
         Performs an off-policy step using a temperature parameter.
 
         Args:
             state (SympleState): The current state.
             env (Symple): The environment.
-            temperature (float): The temperature parameter for softmax.
+            behavior_temperature (float): The temperature parameter for softmax in behavior policy.
             can_finish (bool, optional): Whether the agent can finish. Defaults to True.
 
         Returns:
@@ -575,23 +571,36 @@ class SympleAgent(nn.Module):
         if not can_finish:
             high_level_mask[0, self.high_level_op_indices['finish']] = 0
 
-        l_high, l_internal, l_ext, l_teleport = self.get_policy_logits(state, validity_mask, high_level_mask)
+        q_high, q_internal, q_ext, q_teleport = self.get_q_values(state, validity_mask, high_level_mask)
 
         target_probs = {
-            'high_level': F.softmax(l_high, dim=-1),
-            'internal': F.softmax(l_internal, dim=-1),
-            'external': F.softmax(l_ext, dim=-1),
-            'teleport': F.softmax(l_teleport, dim=-1)
+            'high_level': F.softmax(q_high / self.temperature, dim=-1),
+            'internal': F.softmax(q_internal / self.temperature, dim=-1),
+            'external': F.softmax(q_ext / self.temperature, dim=-1),
+            'teleport': F.softmax(q_teleport / self.temperature, dim=-1)
         }
 
         behavior_probs = {
-            'high_level': F.softmax(l_high / temperature, dim=-1),
-            'internal': F.softmax(l_internal / temperature, dim=-1),
-            'external': F.softmax(l_ext / temperature, dim=-1),
-            'teleport': F.softmax(l_teleport / temperature, dim=-1)
+            'high_level': F.softmax(q_high / behavior_temperature, dim=-1),
+            'internal': F.softmax(q_internal / behavior_temperature, dim=-1),
+            'external': F.softmax(q_ext / behavior_temperature, dim=-1),
+            'teleport': F.softmax(q_teleport / behavior_temperature, dim=-1)
         }
-
-        return self.off_policy_step_from_probs(state, env, target_probs, behavior_probs)
+        state, done, event = self.off_policy_step_from_probs(state, env, target_probs, behavior_probs)
+        high_level_action = event['action_type']
+        action = event['action']
+        if high_level_action == 'internal':
+            q_value = q_high[0, self.high_level_op_indices['internal']] + q_internal[0, action]
+        elif high_level_action == 'external':
+            q_value = q_high[0, self.high_level_op_indices['external']] + q_ext[0, action]
+        elif high_level_action == 'teleport':
+            q_value = q_high[0, self.high_level_op_indices['teleport']] + q_teleport[0, action]
+        elif high_level_action == 'finish':
+            q_value = q_high[0, self.high_level_op_indices['finish']]
+        else:
+            raise ValueError(f"Invalid high-level action: {high_level_action}")
+        event['q_value'] = q_value
+        return state, done, event
 
     def forward(self, expr: Union[SympleState, Expr, str],
                 env: Symple = Symple(),
@@ -691,11 +700,11 @@ class SympleAgent(nn.Module):
                     state, done, event = self.off_policy_step_with_temp(
                         state,
                         env,
-                        temperature=behavior_policy[1],
+                        behavior_temperature=behavior_policy[1],
                         can_finish=steps >= min_steps
                     )
             elif behavior_policy == 'random':
-                temperature = 0.0
+                temperature = inf
                 state, done, event = self.off_policy_step_with_temp(
                     state,
                     env,

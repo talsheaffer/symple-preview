@@ -137,20 +137,18 @@ def train_on_batch(
         states: List[SympleState], 
         optimizer: torch.optim.Optimizer,
         behavior_policy: Optional[Callable[[SympleState, Symple], Union[torch.Tensor, List[float]]]] = None,
-        baseline: Optional[Union[List[float], float]] = None,
         gamma: float = 1.,
         agent_forward_kwargs: Dict[str, Any] = {},
         **symple_kwargs: Dict[str, Any]
 ) -> Tuple[float, List[Dict[str, Any]], List[SympleState], torch.Tensor]:
     """
-    Train the agent on a batch of SympleStates.
+    Train the agent on a batch of SympleStates using Q-learning.
 
     Args:
     agent (SympleAgent): The agent to train.
     states (List[SympleState]): A list of SympleState instances to train on.
     optimizer (torch.optim.Optimizer): The optimizer to use for training.
     behavior_policy (Optional[Callable[[SympleState, Symple], Union[torch.Tensor, List[float]]]]): The behavior policy to use for off-policy training if given.
-    baseline (Optional[Union[List[float], float]]): Optional baseline to subtract from returns.
     gamma (float): Discount factor for future rewards.
     **symple_kwargs: Keyword arguments to pass to Symple constructor for each SympleState.
 
@@ -178,24 +176,19 @@ def train_on_batch(
             target_action_probs = [step['target_probability'] for step in history]
             behavior_action_probs = [step['behavior_probability'] for step in history]
             returns = compute_returns(rewards, target_action_probs, behavior_policy_probs=behavior_action_probs, gamma=gamma)
-            values = torch.cat([step['value'] for step in history], dim=-1)
-            Q = compute_Q_from_v(rewards, values, target_action_probs, behavior_policy_probs=behavior_action_probs, gamma=gamma)
-            probs = target_action_probs
+            q_values = torch.stack([step['q_value'] for step in history])
         else:
             history, output_state = agent(state, env, **agent_forward_kwargs)
             output_states.append(output_state)
             rewards = [step['reward'] for step in history]
             probs = [step['probability'] for step in history]
             returns = compute_returns(rewards, probs, gamma=gamma)
-            values = torch.cat([step['value'] for step in history], dim=-1)
-            Q = compute_Q_from_v(rewards, values, probs, gamma=gamma)
+            q_values = torch.stack([step['q_value'] for step in history])
 
-        critic_loss = torch.nn.functional.mse_loss(values, returns[None,:])/2
+        # Compute Q-learning loss
+        q_learning_loss = torch.nn.functional.mse_loss(q_values, returns)
 
-        baseline = values.detach()[0]
-        actor_loss = compute_loss(Q, probs, baseline=baseline)
-
-        loss = (actor_loss + critic_loss) / len(states)
+        loss = q_learning_loss / len(states)
         loss.backward()
 
         # Update average returns by step
