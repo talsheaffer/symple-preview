@@ -361,6 +361,7 @@ class SympleAgent(nn.Module):
             teleport_action_prob = teleport_probs[:, action]
 
             state.coord = state.en.get_coords()[action]
+            state.action_record.append(state.teleport_index)
 
             prob = teleport_action_prob * high_level_action_prob
             q_value = q_high[0, self.high_level_op_indices['teleport']] + q_teleport[0, action]
@@ -452,6 +453,7 @@ class SympleAgent(nn.Module):
             behavior_prob = behavior_probs['teleport'][:, action]
 
             state.coord = state.en.get_coords()[action]
+            state.action_record.append(state.teleport_index)
 
             reward = env.time_penalty
             node_count_reduction = 0
