@@ -1,5 +1,6 @@
 import os
 import json
+import yaml
 import matplotlib.pyplot as plt
 import numpy as np
 from datetime import datetime
@@ -18,9 +19,10 @@ json_files = [f for f in os.listdir(json_dir) if f.startswith('training_data_') 
 # Sort JSON files by modification time
 sorted_jsons = sorted(json_files, key=lambda x: os.path.getmtime(os.path.join(json_dir, x)))
 
+
 # Display available JSON files
 print("Available training data files:")
-for i, json_file in enumerate(sorted_jsons):  # Show the 5 most recent files
+for i, json_file in enumerate(sorted_jsons):
     file_time = datetime.fromtimestamp(os.path.getmtime(os.path.join(json_dir, json_file)))
     print(f"{i+1}. {json_file} (Modified: {file_time.strftime('%Y-%m-%d %H:%M:%S')})")
 
@@ -41,6 +43,22 @@ file_time = datetime.fromtimestamp(os.path.getmtime(os.path.join(json_dir, selec
 formatted_date_time = file_time.strftime('%Y-%m-%d %H:%M:%S')
 print(f'Using training data from: {formatted_date_time}')
 
+# Try to load the associated metadata file
+metadata_filename = selected_json.replace('training_data_', 'metadata_').replace('.json', '.yaml')
+metadata_path = os.path.join(ROOT_DIR, 'train', 'training_data', metadata_filename)
+
+if os.path.exists(metadata_path):
+    with open(metadata_path, 'r') as f:
+        metadata = yaml.safe_load(f)
+    print("\nMetadata for the selected training data:")
+    print(yaml.dump(metadata, default_flow_style=False))
+else:
+    metadata = {}
+    print("\nNo metadata file found for the selected training data.")
+
+time_penalty = metadata.get('time_penalty', TIME_PENALTY)
+compute_penalty_coefficient = metadata.get('compute_penalty_coefficient', COMPUTE_PENALTY_COEFFICIENT)
+node_count_importance_factor = metadata.get('node_count_importance_factor', NODE_COUNT_IMPORTANCE_FACTOR)
 # Load the JSON data
 with open(os.path.join(json_dir, selected_json), 'r') as f:
     data = json.load(f)
