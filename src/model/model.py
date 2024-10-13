@@ -366,9 +366,9 @@ class SympleAgent(nn.Module):
             prob = teleport_action_prob * high_level_action_prob
             q_value = q_high[0, self.high_level_op_indices['teleport']] + q_teleport[0, action]
 
-            reward = env.time_penalty
-            node_count_reduction = 0
             complexity = state.en.node_count() * self.teleport_ffn_complexity
+            reward = env.time_penalty - env.compute_penalty_coefficient * complexity
+            node_count_reduction = 0
 
         elif high_level_action == 'external':
             validity_mask = env.get_validity_mask(state)
@@ -455,9 +455,9 @@ class SympleAgent(nn.Module):
             state.coord = state.en.get_coords()[action]
             state.action_record.append(state.teleport_index)
 
-            reward = env.time_penalty
+            complexity = state.en.node_count() * self.teleport_ffn_complexity
+            reward = env.time_penalty - env.compute_penalty_coefficient * complexity
             node_count_reduction = 0
-            complexity = 0.0
         
         elif high_level_action == 'finish':
             target_prob = torch.ones(1)
