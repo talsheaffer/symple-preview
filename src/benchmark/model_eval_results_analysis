@@ -7,9 +7,32 @@ from definitions import ROOT_DIR
 
 results_dir = os.path.join(ROOT_DIR, 'src', 'benchmark', 'results')
 
-# Load results from JSON file
-with open(os.path.join(results_dir, 'benchmark_results.json'), 'r') as f:
+# Get list of benchmark result files
+result_files = [f for f in os.listdir(results_dir) if f.startswith('benchmark_results_') and f.endswith('.json')]
+
+# Sort files by modification time, newest first
+result_files.sort(key=lambda x: os.path.getmtime(os.path.join(results_dir, x)))
+
+print("Available benchmark result files:")
+for i, file in enumerate(result_files):
+    print(f"{i+1}. {file}")
+
+while True:
+    choice = input("Enter the number of the file you want to analyze (or 'latest' for the most recent): ")
+    if choice.lower() == 'latest':
+        selected_file = result_files[-1]
+        break
+    elif choice.isdigit() and 1 <= int(choice) <= len(result_files):
+        selected_file = result_files[int(choice)-1]
+        break
+    else:
+        print("Invalid choice. Please try again.")
+
+# Load results from selected JSON file
+with open(os.path.join(results_dir, selected_file), 'r') as f:
     results = json.load(f)
+
+print(f"Loaded results from: {selected_file}")
 
 n_attempts = len(results[0]['all_attempts'])
 
