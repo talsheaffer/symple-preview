@@ -5,6 +5,7 @@ from typing import Dict
 import torch
 import pandas as pd
 from sympy import sympify
+import yaml
 
 from src.model.model import SympleAgent, INTERNAL_OPS
 from src.model.state import SympleState
@@ -18,13 +19,6 @@ with open(dataset_path, "r") as f:
     df = pd.read_json(f)
 df[df.columns[:3]] = df[df.columns[:3]].map(sympify)
 
-# Initialize the agent
-agent = SympleAgent(
-    hidden_size=128,
-    global_hidden_size=256,
-    ffn_n_layers=3,
-    lstm_n_layers=3
-)
 
 # Load the model
 model_save_dir = os.path.join(ROOT_DIR, 'train', 'models')
@@ -54,6 +48,24 @@ else:
 
 model_path = os.path.join(model_save_dir, model_filename)
 date_time_str = model_filename.split('_',1)[1].split('.')[0]
+
+# Load the metadata
+metadata_path = os.path.join(model_save_dir, model_filename.replace('model_', 'model_hyperparams_').replace('.pth', '.yaml'))
+if os.path.exists(metadata_path):
+    with open(metadata_path, 'r') as f:
+        metadata = yaml.safe_load(f)
+else:
+    metadata = {}
+
+
+# Initialize the agent
+agent = SympleAgent(
+    hidden_size = metadata.get('hidden_size', 128),
+    global_hidden_size = metadata.get('global_hidden_size', 256),
+    ffn_n_layers = metadata.get('ffn_n_layers', 1),
+    lstm_n_layers = metadata.get('lstm_n_layers', 1),
+    # temperature=0.1
+)
 agent.load_state_dict(torch.load(model_path, weights_only=True))
 print(f'Loaded model from: {os.path.basename(model_path)}')
 
