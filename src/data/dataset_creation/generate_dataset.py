@@ -6,7 +6,7 @@ from src.data.utils.complicate import complicate
 from src.utils.tree_iter import node_count
 
 import sympy as sp
-from sympy import symbols, simplify
+from sympy import symbols, simplify, factor
 
 import pandas as pd
 
@@ -35,19 +35,22 @@ for config in configs:
         if sp.core.numbers.ComplexInfinity() in ecomp.atoms():
             continue
         secomp = simplify(ecomp)
+        efact = factor(ecomp)
         datapoints.append(
             {
                 "expr": ecomp,
                 "simp": esimp,
                 "simplified": secomp,
+                "factored": efact,
                 "node count expr": node_count(ecomp),
                 "node count simp": node_count(esimp),
                 "node count simplified": node_count(secomp),
+                "node count factored": node_count(efact),
             }
         )
 
 ds = pd.DataFrame.from_dict(datapoints)
-ds[ds.columns[:3]] = ds[ds.columns[:3]].map(str)
+ds[ds.columns[:4]] = ds[ds.columns[:4]].map(str)
 ds["difficulty"] = ds["node count expr"] - ds["node count simp"]
 
 
