@@ -10,7 +10,7 @@ from src.model.environment import TIME_PENALTY, NODE_COUNT_IMPORTANCE_FACTOR, CO
 from src.model.actions import OPS_MAP
 from src.model.model import INTERNAL_OPS
 
-num_epochs = 3
+num_epochs = 30
 
 
 # Find the most recent JSON file
