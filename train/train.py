@@ -14,7 +14,7 @@ import torch
 from src.model.model import SympleAgent, NUM_INTERNAL_OPS
 from src.model.training import train_on_batch
 from src.model.state import SympleState
-from src.model.environment import TIME_PENALTY, COMPUTE_PENALTY_COEFFICIENT
+from src.model.environment import TIME_PENALTY, COMPUTE_PENALTY_COEFFICIENT, NUM_OPS
 
 from definitions import ROOT_DIR
 
@@ -33,7 +33,9 @@ metadata_filename = os.path.join(training_data_dir, f"metadata_{timestamp}.yaml"
 model_save_dir = os.path.join(ROOT_DIR, 'train', 'models')
 os.makedirs(model_save_dir, exist_ok=True)
 model_filename = f'model_{timestamp}'
+model_hyperparams_filename = f'model_hyperparams_{timestamp}.yaml'
 model_save_path = os.path.join(model_save_dir, model_filename)
+model_hyperparams_save_path = os.path.join(model_save_dir, model_hyperparams_filename)
 
 model_files = [f for f in os.listdir(model_save_dir) if f.startswith('model_') and f.endswith('.pth')]
 
@@ -62,12 +64,29 @@ else:
     model_path = None
     print('No previous model found.')
 
+
+# Try to load the associated metadata file
+
+model_hyperparams_filename = model_path.replace('model_', 'model_hyperparams_').replace('.pth', '.yaml') if model_path else f"model_hyperparams_{timestamp}.yaml"
+model_hyperparams_path = os.path.join(ROOT_DIR, 'train', 'models', model_hyperparams_filename)
+
+if os.path.exists(model_hyperparams_path):
+    with open(model_hyperparams_path, 'r') as f:
+        metadata = yaml.safe_load(f)
+    print("\nMetadata for the selected model:")
+    print(yaml.dump(metadata, default_flow_style=False))
+else:
+    metadata = {}
+    print("\nNo metadata file found for the selected model.")
+
 agent = SympleAgent(
-    hidden_size = 128,
-    global_hidden_size=256,
-    ffn_n_layers=3,
-    lstm_n_layers=3,
-    temperature=0.2
+    hidden_size = metadata.get('hidden_size', 128),
+    global_hidden_size = metadata.get('global_hidden_size', 256),
+    ffn_n_layers = metadata.get('ffn_n_layers', 1),
+    lstm_n_layers = metadata.get('lstm_n_layers', 1),
+    num_ops = metadata.get('num_ops', NUM_OPS),
+    # temperature=metadata.get('temperature', 0.2)
+    # temperature = .2
 )
 
 if model_path:
@@ -131,13 +150,12 @@ with open(metadata_filename, 'w') as f:
     yaml.dump(metadata, f)
 
 # Save model parameters in a metadata file
-model_params_filename = os.path.join(model_save_dir, f"model_hyperparams_{timestamp}.yaml")
-model_params = metadata['model_hyperparameters']
+model_hyperparams = metadata['model_hyperparameters']
 
-with open(model_params_filename, 'w') as f:
-    yaml.dump(model_params, f)
+with open(model_hyperparams_save_path, 'w') as f:
+    yaml.dump(model_hyperparams, f)
 
-print(f"Model parameters saved to: {model_params_filename}")
+print(f"Model parameters saved to: {model_hyperparams_save_path}")
 
 
 total_time = 0
