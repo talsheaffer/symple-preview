@@ -70,12 +70,13 @@ class SympleAgent(nn.Module):
         ffn_n_layers: int = 1,
         lstm_n_layers: int = 1,
         temperature: float = 1.0,
+        num_ops: int = NUM_OPS,
     ):
         super(SympleAgent, self).__init__()
         self.hidden_size = hidden_size
         self.global_hidden_size = global_hidden_size if global_hidden_size is not None else hidden_size
         self.vocab_size = VOCAB_SIZE
-        self.num_ops = NUM_OPS
+        self.num_ops = num_ops
         self.num_internal_ops = NUM_INTERNAL_OPS
         self.feature_size = self.hidden_size + self.global_hidden_size + 32
         self.global_lstm_input_size = self.hidden_size + 32
