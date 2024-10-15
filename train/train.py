@@ -100,7 +100,7 @@ def save_model(model,suffix=''):
     print(f"Model state dict saved to: {model_save_path+suffix+'.pth'}")
 
 # Define learning rate schedule
-initial_lr = 0.001
+initial_lr = 0.00005
 lr_decay_factor = 1.0
 
 # Initialize Adam optimizer
@@ -113,6 +113,8 @@ optimizer = torch.optim.Adam(
 # Training loop
 num_epochs = 30
 batch_size = 32
+min_steps = 5
+max_steps = 250
 
 metadata = {
     'model_hyperparameters': {
@@ -131,8 +133,8 @@ metadata = {
     },
     'training_parameters': {
         'behavior_policy': str(None),
-        'min_steps': 5,
-        'max_steps': 250,
+        'min_steps': min_steps,
+        'max_steps': max_steps,
         'initial_lr': initial_lr,
         'lr_decay_factor': lr_decay_factor,
         'batch_size': batch_size,
@@ -168,8 +170,8 @@ training_data = []
 overall_batch_num = 0
 
 for epoch in range(1, num_epochs + 1):
-    # behavior_policy = ('temperature', 1.5 + .2 * (epoch - 1)) if epoch < 10 else None
-    behavior_policy = None
+    behavior_policy = ('temperature', 1.9 + .2 * (epoch - 1)) if epoch < 10 else None
+    # behavior_policy = None
     print(f"Epoch {epoch}/{num_epochs}, Behavior Policy: {behavior_policy}")
     # Update learning rate based on epoch
     if epoch < 30:
@@ -197,8 +199,8 @@ for epoch in range(1, num_epochs + 1):
             optimizer,
             behavior_policy=behavior_policy,
             agent_forward_kwargs=dict(
-                min_steps=5,
-                max_steps=250,
+                min_steps=min_steps,
+                max_steps=max_steps,
             )
         )
         end_time = time.time()
