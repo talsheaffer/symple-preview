@@ -2,14 +2,14 @@ import pandas as pd
 from sympy import sympify
 from matplotlib import pyplot as plt
 import os
-
+import numpy as np
 from src.model.state import SympleState
 
 from definitions import ROOT_DIR
 
 with open(ROOT_DIR + "/data/dataset.json", "r") as f:
     df = pd.read_json(f)
-df[df.columns[:3]] = df[df.columns[:3]].map(sympify)
+df[df.columns[:4]] = df[df.columns[:4]].map(sympify)
 
 # df.head()
 
@@ -130,3 +130,111 @@ plt.ylabel('Frequency')
 plt.gca().spines[['top', 'right']].set_visible(False)
 plt.savefig(os.path.join(output_dir, "expr_node_count_diff_distribution.png"))
 plt.close()
+
+
+# Compute node count for factored expressions
+df['factored_node_count'] = df['factored'].apply(get_expr_node_count)
+
+# Plot node count vs node count factored for ExprNodes
+plt.figure(figsize=(10, 6))
+plt.scatter(df['factored_node_count'], df['expr_node_count'], s=6, alpha=0.8)
+plt.title('ExprNode Count vs ExprNode Count Factored')
+plt.xlabel('ExprNode Count Factored')
+plt.ylabel('ExprNode Count')
+plt.gca().spines[['top', 'right']].set_visible(False)
+plt.gca().set_aspect('equal')
+plt.savefig(os.path.join(output_dir, "expr_node_count_vs_factored.png"))
+plt.close()
+
+# Compute average and std for ExprNode count difference (expr - factored)
+expr_factored_node_count_diff = df['expr_node_count'] - df['factored_node_count']
+avg_expr_factored_node_count_diff = expr_factored_node_count_diff.mean()
+std_expr_factored_node_count_diff = expr_factored_node_count_diff.std()
+
+print(f"Average ExprNode count difference (expr - factored): {avg_expr_factored_node_count_diff:.2f}")
+print(f"Standard deviation of ExprNode count difference (expr - factored): {std_expr_factored_node_count_diff:.2f}")
+
+# Visualize the distribution of ExprNode count difference (expr - factored)
+plt.figure(figsize=(10, 6))
+plt.hist(expr_factored_node_count_diff, bins=30, edgecolor='black')
+plt.axvline(avg_expr_factored_node_count_diff, color='r', linestyle='dashed', linewidth=2)
+plt.title(f'Distribution of ExprNode Count Difference (expr - factored)\nMean: {avg_expr_factored_node_count_diff:.2f}, Std: {std_expr_factored_node_count_diff:.2f}')
+plt.xlabel('ExprNode Count Difference')
+plt.ylabel('Frequency')
+plt.gca().spines[['top', 'right']].set_visible(False)
+plt.savefig(os.path.join(output_dir, "expr_node_count_diff_factored_distribution.png"))
+plt.close()
+
+# Compare simplified vs factored
+plt.figure(figsize=(10, 6))
+plt.scatter(df['simplified_expr_node_count'], df['factored_node_count'], s=6, alpha=0.8)
+plt.title('ExprNode Count Simplified vs ExprNode Count Factored')
+plt.xlabel('ExprNode Count Simplified')
+plt.ylabel('ExprNode Count Factored')
+plt.gca().spines[['top', 'right']].set_visible(False)
+plt.gca().set_aspect('equal')
+plt.savefig(os.path.join(output_dir, "simplified_vs_factored_node_count.png"))
+plt.close()
+
+# Compute which method (simplified or factored) results in fewer nodes
+df['fewer_nodes_method'] = np.where(df['simplified_expr_node_count'] < df['factored_node_count'], 'Simplified', 'Factored')
+fewer_nodes_counts = df['fewer_nodes_method'].value_counts()
+
+plt.figure(figsize=(8, 6))
+fewer_nodes_counts.plot(kind='bar')
+plt.title('Method Resulting in Fewer Nodes')
+plt.xlabel('Method')
+plt.ylabel('Count')
+plt.gca().spines[['top', 'right']].set_visible(False)
+plt.savefig(os.path.join(output_dir, "fewer_nodes_method_comparison.png"))
+plt.close()
+
+print("Method resulting in fewer nodes:")
+print(fewer_nodes_counts)
+
+
+# Compare factored vs simple
+plt.figure(figsize=(10, 6))
+plt.scatter(df['node count simp'], df['factored_node_count'], s=6, alpha=0.8)
+plt.title('ExprNode Count Simple vs ExprNode Count Factored')
+plt.xlabel('ExprNode Count Simple')
+plt.ylabel('ExprNode Count Factored')
+plt.gca().spines[['top', 'right']].set_visible(False)
+plt.gca().set_aspect('equal')
+plt.savefig(os.path.join(output_dir, "simple_vs_factored_node_count.png"))
+plt.close()
+
+# Compute average and std for ExprNode count difference (simple - factored)
+simp_factored_node_count_diff = df['node count simp'] - df['factored_node_count']
+avg_simp_factored_node_count_diff = simp_factored_node_count_diff.mean()
+std_simp_factored_node_count_diff = simp_factored_node_count_diff.std()
+
+print(f"Average ExprNode count difference (simple - factored): {avg_simp_factored_node_count_diff:.2f}")
+print(f"Standard deviation of ExprNode count difference (simple - factored): {std_simp_factored_node_count_diff:.2f}")
+
+# Visualize the distribution of ExprNode count difference (simple - factored)
+plt.figure(figsize=(10, 6))
+plt.hist(simp_factored_node_count_diff, bins=30, edgecolor='black')
+plt.axvline(avg_simp_factored_node_count_diff, color='r', linestyle='dashed', linewidth=2)
+plt.title(f'Distribution of ExprNode Count Difference (simple - factored)\nMean: {avg_simp_factored_node_count_diff:.2f}, Std: {std_simp_factored_node_count_diff:.2f}')
+plt.xlabel('ExprNode Count Difference')
+plt.ylabel('Frequency')
+plt.gca().spines[['top', 'right']].set_visible(False)
+plt.savefig(os.path.join(output_dir, "simp_node_count_diff_factored_distribution.png"))
+plt.close()
+
+# Update the fewer_nodes_method comparison to include simple
+df['fewer_nodes_method'] = np.where(df['node count simp'] < df['factored_node_count'], 'Simple', 'Factored')
+fewer_nodes_counts = df['fewer_nodes_method'].value_counts()
+
+plt.figure(figsize=(8, 6))
+fewer_nodes_counts.plot(kind='bar')
+plt.title('Method Resulting in Fewer Nodes (Simple vs Factored)')
+plt.xlabel('Method')
+plt.ylabel('Count')
+plt.gca().spines[['top', 'right']].set_visible(False)
+plt.savefig(os.path.join(output_dir, "fewer_nodes_method_comparison_simple_factored.png"))
+plt.close()
+
+print("Method resulting in fewer nodes (Simple vs Factored):")
+print(fewer_nodes_counts)
