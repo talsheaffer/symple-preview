@@ -22,7 +22,7 @@ def compose(f, g):
 def with_kwargs(f, **kwargs):
     return lambda *args: f(*args, **kwargs)
 
-NUM_INTERNAL_OPS = 9
+
 INTERNAL_OPS = [
     (lambda agent: agent.apply_ffn, lambda agent: (lambda state: agent.ffn_complexity), 'ffn'),
     (
@@ -32,24 +32,30 @@ INTERNAL_OPS = [
     ),
     (lambda agent: agent.apply_global_lstm, lambda agent: (lambda state: agent.glstm_complexity), 'glstm')
     ]
-for i in range(NUM_INTERNAL_OPS-3):
-    depth = i//2
-    if i %2 == 0:
-        INTERNAL_OPS.append(
-            (
-                lambda agent: with_kwargs(agent.apply_ternary_lstm, depth = depth),
-                lambda agent: (lambda state: agent.tlstm_complexity * state.current_node.node_count(depth=depth)),
-                f'tlstm (depth={depth})'
-            )
+tlstm_depths = [
+    0,
+    1,
+    2,
+    # 4,
+    # 8,
+]
+for depth in tlstm_depths:
+    INTERNAL_OPS.append(
+        (
+            lambda agent: with_kwargs(agent.apply_ternary_lstm, depth = depth),
+            lambda agent: (lambda state: agent.tlstm_complexity * state.current_node.node_count(depth=depth)),
+            f'tlstm (depth={depth})'
         )
-    else:
-        INTERNAL_OPS.append(
-            (
+    )
+    INTERNAL_OPS.append(
+        (
             lambda agent: compose(agent.apply_global_lstm, with_kwargs(agent.apply_ternary_lstm, depth = depth)),
             lambda agent: (lambda state: agent.tlstm_complexity * state.current_node.node_count(depth=depth) + agent.glstm_complexity),
             f'tlstm (depth={depth}) - glstm'
-            )
         )
+    )
+
+NUM_INTERNAL_OPS = len(INTERNAL_OPS)
 
 
 class SympleAgent(nn.Module):
