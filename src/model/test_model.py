@@ -129,6 +129,37 @@ class TestSympleAgent(unittest.TestCase):
                             f"Expressions not equal:\nOriginal: {expr}\nFinal: {final_sympy}")
     
 
+    def test_agent_with_epsilon_greedy_policy(self):
+        epsilon = 0.1
+        for expr in expressions:
+            history, final_state = self.agent(
+                expr,
+                behavior_policy=('epsilon-greedy', epsilon),
+                min_steps=20,
+                max_steps=1000
+            )
+            
+            self.assertGreater(len(history), 0)
+            self.assertIsInstance(history, list)
+            self.assertIsInstance(final_state, SympleState)
+            
+            # for event in history:
+            #     target_prob = event['target_probability'].item()
+            #     behavior_prob = event['behavior_probability'].item()
+            #     if event['action_type'] == 'internal':
+            #         num_actions = NUM_INTERNAL_OPS
+            #     elif event['action_type'] == 'external':
+            #         num_actions = NUM_OPS
+            #     else:
+            #         pass
+            #     expected_behavior_prob = (1 - epsilon) * target_prob + epsilon / num_actions
+            #     self.assertAlmostEqual(behavior_prob, expected_behavior_prob, places=5,
+            #         msg=f"Behavior probability {behavior_prob} does not match expected {expected_behavior_prob}")
+
+            final_sympy = final_state.to_sympy()
+            self.assertTrue(check_equality(expr, final_sympy),
+                            f"Expressions not equal:\nOriginal: {expr}\nFinal: {final_sympy}")
+        
     def test_agent_with_action_record(self):
         for expr in expressions:
             history, final_state = self.agent(
