@@ -611,6 +611,59 @@ class SympleAgent(nn.Module):
             raise ValueError(f"Invalid high-level action: {high_level_action}")
         event['q_value'] = q_value
         return state, done, event
+    
+    def off_policy_step_with_epsilon(
+            self,
+            state: SympleState,
+            env: Symple,
+            epsilon: float = 0.1,
+            can_finish: bool = True
+    ) -> Tuple[SympleState, bool, Dict]:
+        """
+        Performs an off-policy step using an epsilon-greedy policy.
+
+        Args:
+            state (SympleState): The current state.
+            env (Symple): The environment.
+            epsilon (float): The epsilon parameter for epsilon-greedy policy.   
+            can_finish (bool, optional): Whether the agent can finish. Defaults to True.
+
+        Returns:
+            Tuple[SympleState, bool, Dict]: The new state, whether the episode is done, and event information.
+        """
+        validity_mask = env.get_validity_mask(state)
+        high_level_mask = torch.ones((1, len(self.high_level_op_indices)), device=self.device, dtype=DEFAULT_DTYPE)
+        if not can_finish:
+            high_level_mask[0, self.high_level_op_indices['finish']] = 0
+
+        q_high, q_internal, q_ext, q_teleport = self.get_q_values(state, validity_mask, high_level_mask)
+        target_probs = {
+            'high_level': F.softmax(q_high / self.temperature, dim=-1),
+            'internal': F.softmax(q_internal / self.temperature, dim=-1),
+            'external': F.softmax(q_ext / self.temperature, dim=-1),
+            'teleport': F.softmax(q_teleport / self.temperature, dim=-1)
+        }
+        
+        behavior_probs = {key : (1-epsilon) * ps + epsilon * (ps!=0)/(ps!=0).sum() for key, ps in target_probs.items()}
+        
+        state, done, event = self.off_policy_step_from_probs(state, env, target_probs, behavior_probs)
+        high_level_action = event['action_type']
+        action = event['action']
+        hlo_index = self.high_level_op_indices[high_level_action]
+        if high_level_action == 'internal':
+            q_value = q_high[0, hlo_index] + q_internal[0, action]
+        elif high_level_action == 'external':
+            q_value = q_high[0, hlo_index] + q_ext[0, action]
+        elif high_level_action == 'teleport':
+            q_value = q_high[0, hlo_index] + q_teleport[0, action]
+        elif high_level_action == 'finish':
+            q_value = q_high[0, hlo_index]
+        else:
+            raise ValueError(f"Invalid high-level action: {high_level_action}")
+        event['q_value'] = q_value
+        return state, done, event
+            
+    
 
     def forward(self, expr: Union[SympleState, Expr, str],
                 env: Symple = Symple(),
@@ -711,6 +764,14 @@ class SympleAgent(nn.Module):
                         state,
                         env,
                         behavior_temperature=behavior_policy[1],
+                        can_finish=steps >= min_steps
+                    )
+                elif behavior_policy[0] == 'epsilon-greedy':
+                    epsilon = behavior_policy[1]
+                    state, done, event = self.off_policy_step_with_epsilon(
+                        state,
+                        env,
+                        epsilon=epsilon,
                         can_finish=steps >= min_steps
                     )
             elif behavior_policy == 'random':
