@@ -83,10 +83,10 @@ agent = SympleAgent(
     hidden_size = metadata.get('hidden_size', 128),
     global_hidden_size = metadata.get('global_hidden_size', 256),
     ffn_n_layers = metadata.get('ffn_n_layers', 1),
-    lstm_n_layers = metadata.get('lstm_n_layers', 1),
+    lstm_n_layers = metadata.get('lstm_n_layers', 3),
     num_ops = metadata.get('num_ops', NUM_OPS),
     # temperature=metadata.get('temperature', 0.2)
-    # temperature = .2
+    # temperature = .5
 )
 
 if model_path:
@@ -100,8 +100,8 @@ def save_model(model,suffix=''):
     print(f"Model state dict saved to: {model_save_path+suffix+'.pth'}")
 
 # Define learning rate schedule
-initial_lr = 0.00005
-lr_decay_factor = 1.0
+initial_lr = 0.0001
+lr_decay_factor = 0.9
 
 # Initialize Adam optimizer
 weight_decay = 0.001
@@ -113,7 +113,7 @@ optimizer = torch.optim.Adam(
 # Training loop
 num_epochs = 2
 batch_size = 32
-min_steps = 5
+min_steps = 0
 max_steps = 250
 
 metadata = {
@@ -170,15 +170,17 @@ training_data = []
 overall_batch_num = 0
 
 for epoch in range(1, num_epochs + 1):
-    behavior_policy = ('temperature', 1.9 + .2 * (epoch - 1)) if epoch < 10 else None
+    # behavior_policy = ('temperature', 1.3 + .2 * (epoch - 1)) if epoch < 10 else None 
+    behavior_policy = ('epsilon-greedy', 0.05 if epoch<10 else 0.02)
     # behavior_policy = None
-    print(f"Epoch {epoch}/{num_epochs}, Behavior Policy: {behavior_policy}")
+
     # Update learning rate based on epoch
-    if epoch < 30:
+    if epoch < 10:
         current_lr = initial_lr * (lr_decay_factor ** (epoch - 1))
         for param_group in optimizer.param_groups:
             param_group['lr'] = current_lr
 
+    print(f"Epoch {epoch}/{num_epochs}, Behavior Policy: {behavior_policy}, Learning Rate: {current_lr:.8f}")
     # Shuffle the dataset
     shuffled_data = df['expr'].sample(frac=1).reset_index(drop=True)
     n_batches = len(shuffled_data) // batch_size
