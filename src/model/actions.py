@@ -2,11 +2,11 @@ from symple.expr.actions import ACTIONS, Action
 from symple.expr.expr_node import ExprNode as ExprNodeBase
 from typing import Tuple, Callable, Any, Optional
 from src.model.tree import ExprNode
-from src.model.state import SympleState
+# from src.model.state import SympleState 
 import sympy as sp
 
-def apply_op_and_count(op: Callable[[ExprNode], ExprNode]) -> Callable[[SympleState], Tuple[SympleState, int]]:
-    def wrapper(state: SympleState) -> Tuple[SympleState, int]:
+def apply_op_and_count(op: Callable[[ExprNode], ExprNode]) -> Callable[[Any], Tuple[Any, int]]:
+    def wrapper(state: Any) -> Tuple[Any, int]:
         initial_count = state.node_count()
         state.en = state.en.apply_at_coord(state.coord, op)
         final_count = state.node_count()
@@ -17,7 +17,7 @@ def apply_op_and_count(op: Callable[[ExprNode], ExprNode]) -> Callable[[SympleSt
 
 def wrap_action(
         action: Callable[[ExprNodeBase], ExprNodeBase],
-) -> Callable[[SympleState], Tuple[SympleState, int]]:
+) -> Callable[[Any], Tuple[Any, int]]:
     
     def subclass_wrapper(expr: ExprNodeBase) -> ExprNode:
         return ExprNode.from_expr_node_base(action(expr))
@@ -25,8 +25,8 @@ def wrap_action(
     wrapper = apply_op_and_count(subclass_wrapper)
     
     return wrapper
-def wrap_can_apply(can_apply: Callable[[ExprNodeBase], bool]) -> Callable[[SympleState], bool]:
-    def wrapper(state: SympleState) -> bool:
+def wrap_can_apply(can_apply: Callable[[ExprNodeBase], bool]) -> Callable[[Any], bool]:
+    def wrapper(state: Any) -> bool:
         return can_apply(state.en.get_node(state.coord))
     return wrapper
 
@@ -39,24 +39,24 @@ for action_type, action in ACTIONS.items():
     OPS_MAP.append(action)
 
 
-def can_move_up(state: SympleState) -> bool:
+def can_move_up(state: Any) -> bool:
     return len(state.coord) > 0
 
-def can_move_left(state: SympleState) -> bool:
+def can_move_left(state: Any) -> bool:
     return state.en.get_node(state.coord).left is not None
 
-def can_move_right(state: SympleState) -> bool:
+def can_move_right(state: Any) -> bool:
     return state.en.get_node(state.coord).right is not None
 
-def move_up(state: SympleState) -> Tuple[SympleState, int]:
+def move_up(state: Any) -> Tuple[Any, int]:
     state.coord = state.coord[:-1]
     return state, 0
 
-def move_left(state: SympleState) -> Tuple[SympleState, int]:
+def move_left(state: Any) -> Tuple[Any, int]:
     state.coord = state.coord + (0,)
     return state, 0
 
-def move_right(state: SympleState) -> Tuple[SympleState, int]:
+def move_right(state: Any) -> Tuple[Any, int]:
     state.coord = state.coord + (1,)
     return state, 0
 
@@ -110,8 +110,8 @@ def substitute_matches(old_node: ExprNode, new_node: ExprNode) -> ExprNode:
         return new_node
 
 
-def wrap_sympy_function(sympy_func: Callable[[Any], Any]) -> Callable[[SympleState], Tuple[SympleState, int]]:
-    def wrapper(state: SympleState) -> Tuple[SympleState, int]:
+def wrap_sympy_function(sympy_func: Callable[[Any], Any]) -> Callable[[Any], Tuple[Any, int]]:
+    def wrapper(state: Any) -> Tuple[Any, int]:
         initial_count = state.node_count()
         old_node = state.current_node
         sympy_expr = state.to_sympy(old_node)
@@ -124,7 +124,7 @@ def wrap_sympy_function(sympy_func: Callable[[Any], Any]) -> Callable[[SympleSta
         return state, reduction
     return wrapper
 
-def always_applicable(state: SympleState) -> bool:
+def always_applicable(state: Any) -> bool:
     return True
 
 for func in sympy_functions:
@@ -137,31 +137,31 @@ for func in sympy_functions:
 
 # Add SympleState actions to the OPS_MAP
 
-def can_declare_new_symbol(state: SympleState) -> bool:
+def can_declare_new_symbol(state: Any) -> bool:
     return state.can_declare_symbol()
 
-def declare_new_symbol(state: SympleState) -> Tuple[SympleState, int]:
+def declare_new_symbol(state: Any) -> Tuple[Any, int]:
     state.declare_new_symbol()
     return state, 0
 
-def can_switch_to_sub_state(state: SympleState) -> bool:
+def can_switch_to_sub_state(state: Any) -> bool:
     return state.can_switch_to_sub_state()
 
-def switch_to_sub_state(state: SympleState) -> Tuple[SympleState, int]:
+def switch_to_sub_state(state: Any) -> Tuple[Any, int]:
     state.switch_to_sub_state()
     return state, 0
 
-def can_revert_to_primary_state(state: SympleState) -> bool:
+def can_revert_to_primary_state(state: Any) -> bool:
     return state.can_revert_to_primary_state()
 
-def revert_to_primary_state(state: SympleState) -> Tuple[SympleState, int]:
+def revert_to_primary_state(state: Any) -> Tuple[Any, int]:
     state.revert_to_primary_state()
     return state, 0
 
-def can_evaluate_symbol(state: SympleState) -> bool:
+def can_evaluate_symbol(state: Any) -> bool:
     return state.can_evaluate_symbol()
 
-def evaluate_symbol(state: SympleState) -> Tuple[SympleState, int]:
+def evaluate_symbol(state: Any) -> Tuple[Any, int]:
     state.evaluate_symbol()
     return state, 0
 
@@ -209,8 +209,8 @@ action.name = "Revert to best checkpoint"
 OPS_MAP.append(action)
 
 
-def record_action_wrapper(action: Callable[[SympleState], Tuple[SympleState, int]], index: int) -> Callable[[SympleState], Tuple[SympleState, int]]:
-    def wrapper(state: SympleState) -> Tuple[SympleState, int]:
+def record_action_wrapper(action: Callable[[Any], Tuple[Any, int]], index: int) -> Callable[[Any], Tuple[Any, int]]:
+    def wrapper(state: Any) -> Tuple[Any, int]:
         state, reward = action(state)
         state.action_record.append(index)
         return state, reward
@@ -219,3 +219,6 @@ def record_action_wrapper(action: Callable[[SympleState], Tuple[SympleState, int
 for i, action in enumerate(OPS_MAP):
     action.apply = record_action_wrapper(action.apply, i)
 
+
+
+NUM_OPS = len(OPS_MAP)

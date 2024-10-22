@@ -1,18 +1,29 @@
 from dataclasses import dataclass, field
-from typing import Optional, Union, Dict, Tuple
+from typing import Optional, Union, Dict, Tuple, List
 from collections import deque
 
 import torch
 
 from src.model.tree import ExprNode, SymbolNode, SYMBOL_VOCAB_SIZE, VOCAB_SIZE
+from src.model.actions import NUM_OPS
 from symple.expr.expr_node import ExprNodeType
+
 
 import sympy as sp
 
 from torch import Tensor
 
 ACTION_MEMORY_LENGTH = 10
-TELEPORT_INDEX = 29
+TELEPORT_INDEX = NUM_OPS
+STATE_VECTOR_SIZE = 8*((
+    NUM_OPS 
+    + 1 # teleport
+    + 1 # current node count (normalized)
+    + 1 # total node count (normalized)
+    + 1 # number of remaining checkpoints to save
+)//8 + 1) # Make sure this is a multiple of 8
+
+NUM_CHECKPOINT_STATES = 30
 
 class SymbolManager(dict):
     def __init__(self):
@@ -155,21 +166,19 @@ class SympleState:
         """
 
         # Encode the last action taken (one-hot encoding with vector of length 30)
-        last_action_encoding = torch.zeros(self.teleport_index+1, dtype=torch.float32)
+        state_tensor = torch.zeros(STATE_VECTOR_SIZE, dtype=torch.float32)
         if self.action_record:
             last_action = self.action_record[-1]
-            last_action_encoding[last_action] = 1.0
+            state_tensor[last_action] = 1.0
 
         # Calculate normalized node counts
-        current_node_count = self.current_node.node_count() / 64.0
-        state_node_count = self.en.node_count() / 64.0
+        state_tensor[-1] = self.en.node_count() / 64.0
+        state_tensor[-2] = self.current_node.node_count() / 64.0
 
-        # Concatenate the vectors
-        state_tensor = torch.cat([
-            last_action_encoding,
-            torch.tensor([current_node_count], dtype=torch.float32),
-            torch.tensor([state_node_count], dtype=torch.float32)
-        ]).unsqueeze(0)  # Add batch dimension
+        # Number of remaining checkpoints to save
+        state_tensor[-3] = self.n_available_checkpoints / NUM_CHECKPOINT_STATES
+
+        state_tensor = state_tensor.unsqueeze(0)  # Add batch dimension
 
         return state_tensor
     

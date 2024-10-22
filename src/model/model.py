@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from src.model.environment import NUM_OPS, Symple
-from src.model.state import SympleState
+from src.model.state import SympleState, STATE_VECTOR_SIZE
 from src.model.ffn import FFN
 from src.model.tree import VOCAB_SIZE, ExprNode
 from src.model.nary_tree_lstm import NaryTreeLSTM
@@ -78,8 +78,9 @@ class SympleAgent(nn.Module):
         self.vocab_size = VOCAB_SIZE
         self.num_ops = num_ops
         self.num_internal_ops = NUM_INTERNAL_OPS
-        self.feature_size = self.hidden_size + self.global_hidden_size + 32
-        self.global_lstm_input_size = self.hidden_size + 32
+        self.state_vector_size = STATE_VECTOR_SIZE
+        self.feature_size = self.hidden_size + self.global_hidden_size + self.state_vector_size
+        self.global_lstm_input_size = self.hidden_size + self.state_vector_size
         self.ffn_hidden_size = self.feature_size
         self.temperature = temperature
 

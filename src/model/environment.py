@@ -2,7 +2,7 @@ from typing import Tuple
 
 import torch
 
-from src.model.actions import OPS_MAP
+from src.model.actions import OPS_MAP, NUM_OPS
 from src.model.state import SympleState
 
 
@@ -10,8 +10,6 @@ TIME_PENALTY = -0.01
 NODE_COUNT_IMPORTANCE_FACTOR = 1.0
 COMPUTE_PENALTY_COEFFICIENT = 1e-9
 
-
-NUM_OPS = len(OPS_MAP)
 
 
 

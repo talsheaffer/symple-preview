@@ -2,8 +2,8 @@ import unittest
 
 import sympy as sp
 
-from src.model.environment import Symple
-from src.model.model import SympleAgent
+from src.model.environment import Symple, NUM_OPS
+from src.model.model import SympleAgent, NUM_INTERNAL_OPS
 from src.model.state import SympleState
 from train.aux_policies import random_policy
 
