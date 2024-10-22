@@ -47,10 +47,11 @@ else:
     raise ValueError("No model found. Please run train.py first.")
 
 model_path = os.path.join(model_save_dir, model_filename)
-date_time_str = model_filename.split('_',1)[1].split('.')[0]
+date_time_str = '_'.join(model_filename.split('_')[1:3]).split('.')[0]
 
 # Load the metadata
-metadata_path = os.path.join(model_save_dir, model_filename.replace('model_', 'model_hyperparams_').replace('.pth', '.yaml'))
+metadata_filename = 'model_hyperparams_'+date_time_str+'.yaml'
+metadata_path = os.path.join(model_save_dir, metadata_filename)
 if os.path.exists(metadata_path):
     with open(metadata_path, 'r') as f:
         metadata = yaml.safe_load(f)
