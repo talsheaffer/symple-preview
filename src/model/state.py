@@ -52,6 +52,7 @@ class SympleState:
     nc: Optional[int] = None
     action_record: deque = field(default_factory=lambda: deque(maxlen=ACTION_MEMORY_LENGTH))
     teleport_index: int = TELEPORT_INDEX
+    checkpoint_states: Dict[str, List[Tuple[ExprNode, Tensor, Tensor]]] = field(default_factory=dict)
 
     def Expr_Node_from_sympy(self, expr: Union[str, sp.Expr], evaluate: bool = True) -> ExprNode:
         if isinstance(expr, str):
@@ -143,6 +144,10 @@ class SympleState:
     def substitute_current_node(self, new_node: ExprNode) -> None:
         self.en = self.en.apply_at_coord(self.coord, lambda x: new_node)
 
+    @property
+    def n_available_checkpoints(self) -> int:
+        return NUM_CHECKPOINT_STATES - sum(len(v) for v in self.checkpoint_states.values())
+    
     @property
     def state_tensor(self) -> Tensor:
         """
@@ -247,6 +252,8 @@ class SympleState:
 
         n, sub_en, _, _ = self.sub_states.pop(name)
         del self.symbols[name]
+        if name in self.checkpoint_states.keys():
+            del self.checkpoint_states[name]
         self.substitute(n, sub_en)
     
     def evaluate_all_symbols(self) -> None:
@@ -275,7 +282,7 @@ class SympleState:
         return count
 
     def node_count(self, name: Optional[str] = None) -> int:
-        if name is None:
+        if name is None or name == 'primary':
             self.update()
             node = self.primary_state[0]
         else:
@@ -300,6 +307,60 @@ class SympleState:
             if value > 0:
                 count += value * self.node_count(key)
         return count
+    
+    def can_save_checkpoint(self) -> bool:
+        return self.n_available_checkpoints > 0
+    
+    def save_checkpoint(self) -> None:
+        name = self.current_name if self.current_name is not None else 'primary'
+        self.checkpoint_states[name] = self.checkpoint_states.get(name, []) + [
+            (
+                self.en.clone(),
+                self.h_glob.clone() if self.h_glob is not None else None,
+                self.c_glob.clone() if self.c_glob is not None else None,
+                self.coord
+            )
+        ]
+    
+    def can_toggle_checkpoint(self) -> bool:
+        name = self.current_name if self.current_name is not None else 'primary'
+        return len(self.checkpoint_states.get(name, [])) > 0
+    
+    def toggle_checkpoint(self, index : Optional[int] = None) -> int:
+        name = self.current_name if self.current_name is not None else 'primary'
+        initial_node_count = self.node_count()
+        index = index if index is not None else len(self.checkpoint_states[name])
+        self.save_checkpoint()
+        # Cycle the current state to the back of the list
+        self.checkpoint_states[name] = list(self.checkpoint_states[name][-1:]) + list(self.checkpoint_states[name][:-1])
+        # load the most recent, or indicated, checkpoint and remove it from the list
+        self.en, self.h_glob, self.c_glob, self.coord = self.checkpoint_states[name].pop(index)
+        current_node_count = self.node_count()
+        self.update()
+        return initial_node_count - current_node_count # NCR
+    
+    def can_revert_to_best_checkpoint(self) -> bool:
+        name = self.current_name if self.current_name is not None else 'primary'
+        return len(self.checkpoint_states.get(name, [])) > 0
+    
+    def revert_to_best_checkpoint(self) -> int:
+        name = self.current_name if self.current_name is not None else 'primary'
+        n_checkpoints = len(self.checkpoint_states[name])
+        best_index = None
+        initial_node_count = self.node_count()
+        best_node_count = initial_node_count
+        for i in reversed(range(n_checkpoints)):
+            self.toggle_checkpoint()
+            current_node_count = self.node_count()
+            if current_node_count < best_node_count:
+                best_index = i
+                best_node_count = current_node_count
+        self.toggle_checkpoint()
+        if best_index is not None:
+            self.toggle_checkpoint(best_index)
+        return initial_node_count - best_node_count # NCR
+
+
 
     def __repr__(self) -> str:
         s = self.en.__repr__()

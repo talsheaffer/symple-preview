@@ -165,6 +165,27 @@ def evaluate_symbol(state: SympleState) -> Tuple[SympleState, int]:
     state.evaluate_symbol()
     return state, 0
 
+def can_save_checkpoint(state: Any) -> bool:
+    return state.can_save_checkpoint()
+
+def save_checkpoint(state: Any) -> Tuple[Any, int]:
+    state.save_checkpoint()
+    return state, 0
+
+def can_toggle_checkpoint(state: Any) -> bool:
+    return state.can_toggle_checkpoint()
+
+def toggle_checkpoint(state: Any) -> Tuple[Any, int]:
+    ncr = state.toggle_checkpoint()
+    return state, ncr
+
+def can_revert_to_best_checkpoint(state: Any) -> bool:
+    return state.can_revert_to_best_checkpoint()
+
+def revert_to_best_checkpoint(state: Any) -> Tuple[Any, int]:
+    ncr = state.revert_to_best_checkpoint()
+    return state, ncr
+
 action = Action(can_declare_new_symbol, declare_new_symbol)
 action.name = "Declare new symbol"
 OPS_MAP.append(action)
@@ -176,6 +197,15 @@ action.name = "Revert to primary state"
 OPS_MAP.append(action)
 action = Action(can_evaluate_symbol, evaluate_symbol)
 action.name = "Evaluate symbol"
+OPS_MAP.append(action)
+action = Action(can_save_checkpoint, save_checkpoint)
+action.name = "Save checkpoint"
+OPS_MAP.append(action)
+action = Action(can_toggle_checkpoint, toggle_checkpoint)
+action.name = "Toggle checkpoint"
+OPS_MAP.append(action)
+action = Action(can_revert_to_best_checkpoint, revert_to_best_checkpoint)
+action.name = "Revert to best checkpoint"
 OPS_MAP.append(action)
 
 
