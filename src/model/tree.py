@@ -60,11 +60,15 @@ class ExprNode(ExprNodeBase):
             self.b.p = self
 
     def clone(self) -> "ExprNode":
-        en = super().clone()
-        en.ensure_parenthood()
-        en.p = self.p
-        en.hidden = self.hidden.clone() if self.hidden is not None else None
-        en.cell = self.cell.clone() if self.cell is not None else None
+        en = ExprNode(
+            self.type,
+            arg = self.arg,
+            left = self.left.clone() if self.left is not None else None,
+            right = self.right.clone() if self.right is not None else None,
+            p = self.p,
+            hidden = self.hidden.clone() if self.hidden is not None else None,
+            cell = self.cell.clone() if self.cell is not None else None,
+        )
         return en
     
     def node_count(self, depth: int = inf) -> int:
