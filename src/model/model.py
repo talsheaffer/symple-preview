@@ -395,11 +395,11 @@ class SympleAgent(nn.Module):
 
         elif high_level_action == 'finish':
             done = True
-            reward = 0
-            node_count_reduction = 0
+            node_count_reduction = state.finish()
             action = 0
             complexity = 0.0
 
+            reward = env.node_count_importance_factor * node_count_reduction
             prob = high_level_action_prob
             q_value = q_high[0, self.high_level_op_indices['finish']]
         else:
@@ -471,8 +471,8 @@ class SympleAgent(nn.Module):
             target_prob = torch.ones(1)
             behavior_prob = torch.ones(1)
             done = True
-            reward = 0
-            node_count_reduction = 0
+            node_count_reduction = state.finish()
+            reward = env.node_count_importance_factor * node_count_reduction
             action = 0
             complexity = 0.0
 
@@ -728,7 +728,7 @@ class SympleAgent(nn.Module):
             history.append(event)
             steps += 1
 
-        state.finish()
+        # state.finish()
         return history, state
     
     def off_policy_forward(self, state: SympleState, env: Symple,
