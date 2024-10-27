@@ -101,7 +101,7 @@ def save_model(model,suffix=''):
 
 # Define learning rate schedule
 initial_lr = 0.0001
-lr_decay_factor = 0.9
+lr_decay_factor = 0.5
 
 # Initialize Adam optimizer
 weight_decay = 0.001
@@ -175,7 +175,7 @@ for epoch in range(1, num_epochs + 1):
     # behavior_policy = None
 
     # Update learning rate based on epoch
-    if epoch < 10:
+    if epoch < 3:
         current_lr = initial_lr * (lr_decay_factor ** (epoch - 1))
         for param_group in optimizer.param_groups:
             param_group['lr'] = current_lr

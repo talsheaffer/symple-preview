@@ -145,6 +145,10 @@ class SympleState:
         self.en = self.en.substitute(node, new_node)
         for name, (n, sub_en, h, c) in self.sub_states.items():
             self.sub_states[name] = (n, sub_en.substitute(node, new_node), h, c)
+        for name in self.checkpoint_states.keys():
+            self.checkpoint_states[name] = [
+                (sub_en.substitute(node, new_node), h, c, coord) for sub_en, h, c, coord in self.checkpoint_states[name]
+            ]
         if self.current_name is not None:
             self.primary_state = (self.primary_state[0].substitute(node, new_node), *self.primary_state[1:])
 
@@ -270,9 +274,6 @@ class SympleState:
         for name in names:
             self.evaluate_symbol(name)
     
-    def finish(self) -> None:
-        self.evaluate_all_symbols()
-        self.en.reset_tensors()
     
     def count_symbol(self, name: Optional[str] = None) -> int:
         if name is None:
@@ -369,8 +370,25 @@ class SympleState:
             self.toggle_checkpoint(best_index)
         return initial_node_count - best_node_count # NCR
 
+    def revert_all_to_best_checkpoint(self) -> int:
+        names = self.checkpoint_states.keys()
+        ncr = 0
+        for name in names:
+            if name == 'primary':
+                self.revert_to_primary_state()
+            else:
+                self.switch_to_sub_state(name)
+            ncr += self.revert_to_best_checkpoint()
+        self.revert_to_primary_state()
+        return ncr
 
+    def finish(self) -> int:
+        ncr = self.revert_all_to_best_checkpoint()
+        self.evaluate_all_symbols()
+        self.en.reset_tensors()
+        return ncr
 
+    
     def __repr__(self) -> str:
         s = self.en.__repr__()
         s += f"\ncoord: {self.coord}"
