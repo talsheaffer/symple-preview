@@ -100,8 +100,9 @@ def save_model(model,suffix=''):
     print(f"Model state dict saved to: {model_save_path+suffix+'.pth'}")
 
 # Define learning rate schedule
-initial_lr = 0.0001
+initial_lr = 0.001
 lr_decay_factor = 0.5
+
 
 # Initialize Adam optimizer
 weight_decay = 0.001
@@ -115,6 +116,30 @@ num_epochs = 30
 batch_size = 32
 min_steps = 0
 max_steps = 250
+
+epochs = range(1, num_epochs + 1)
+# Calculate learning rates for each epoch
+lrs = [initial_lr * (lr_decay_factor ** min((epoch - 1), 3)) for epoch in epochs]
+
+# Ask user for behavior policy choice
+print("\nSelect behavior policy:")
+print("1. Epsilon-greedy (ε=0.05)")
+print("2. Temperature-based (T=1.3 + 0.2*(epoch-1))")
+print("3. On-policy")
+
+while True:
+    policy_choice = input("Enter your choice (1-3): ")
+    if policy_choice == '1':
+        behavior_policies = [('epsilon-greedy', 0.05) for epoch in epochs]
+        break
+    elif policy_choice == '2':
+        behavior_policies = [('temperature', 1.3 + 0.2 * (epoch - 1)) for epoch in epochs]
+        break
+    elif policy_choice == '3':
+        behavior_policies = [None for epoch in epochs]
+        break
+    else:
+        print("Invalid choice. Please try again.")
 
 metadata = {
     'model_hyperparameters': {
@@ -169,16 +194,10 @@ training_data = []
 
 overall_batch_num = 0
 
-for epoch in range(1, num_epochs + 1):
-    # behavior_policy = ('temperature', 1.3 + .2 * (epoch - 1)) if epoch < 10 else None 
-    behavior_policy = ('epsilon-greedy', 0.05 if epoch<10 else 0.02)
-    # behavior_policy = None
-
+for epoch, current_lr, behavior_policy in zip(epochs, lrs, behavior_policies):
     # Update learning rate based on epoch
-    if epoch < 3:
-        current_lr = initial_lr * (lr_decay_factor ** (epoch - 1))
-        for param_group in optimizer.param_groups:
-            param_group['lr'] = current_lr
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = current_lr
 
     print(f"Epoch {epoch}/{num_epochs}, Behavior Policy: {behavior_policy}, Learning Rate: {current_lr:.8f}")
     # Shuffle the dataset
