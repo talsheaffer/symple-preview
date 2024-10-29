@@ -1,0 +1,268 @@
+import unittest
+import sympy as sp
+from torch import Tensor
+from src.model.state import SympleState
+from src.model.tree import ExprNode, ExprNodeType
+
+x, y, z = sp.symbols('x y z')
+
+expressions = [
+    (x + y)**3 - (x**3 + y**3 + 3*x*y*(x + y)),
+    (x - y)**4 - (x**4 - 4*x**3*y + 6*x**2*y**2 - 4*x*y**3 + y**4),
+    (x + y + z)**2 - (x**2 + y**2 + z**2 + 2*x*y + 2*y*z + 2*z*x),
+    x**4 - y**4 - (x**2 + y**2)*(x + y)*(x - y),
+    (x + y)**5 - (x**5 + 5*x**4*y + 10*x**3*y**2 + 10*x**2*y**3 + 5*x*y**4 + y**5),
+    (x**2 + 2*x*y + y**2) - (x + y)**2,
+    sp.sqrt(x**2 + y**2) - sp.sqrt((x + y)**2 - 2*x*y),
+    sp.sqrt(x) + sp.sqrt(y) - sp.sqrt(x + y + 2*sp.sqrt(x*y)),
+    (sp.sqrt(x) + sp.sqrt(y))**2 - (x + y + 2*sp.sqrt(x*y)),
+    (x + sp.sqrt(x**2 - 1))*(x - sp.sqrt(x**2 - 1)) - 1,
+    sp.sqrt(1 + sp.sqrt(1 + sp.sqrt(1 + x))) - sp.sqrt(x + 2),
+]
+
+class TestSympleState(unittest.TestCase):
+    def setUp(self):
+        self.state = SympleState()
+
+    def test_from_sympy(self):
+        expr = sp.sympify("x + y")
+        state = SympleState.from_sympy(expr)
+        self.assertIsInstance(state.en, ExprNode)
+        self.assertEqual(state.en.type, ExprNodeType.ADD)
+        self.assertEqual(state.en.left.type, state.symbols["x"])
+        self.assertEqual(state.en.right.type, state.symbols["y"])
+        for expr in expressions:
+            state = SympleState.from_sympy(expr)
+            self.assertIsInstance(state.en, ExprNode)
+
+    def test_to_sympy(self):
+        expr = sp.sympify("x + y")
+        state = SympleState.from_sympy(expr)
+        result = state.to_sympy()
+        self.assertEqual(result, expr)
+        for expr in expressions:
+            state = SympleState.from_sympy(expr)
+            result = state.to_sympy()
+            self.assertEqual(result, expr)
+
+    def test_substitute(self):
+        expr = sp.sympify("x + y")
+        state = SympleState.from_sympy(expr)
+        new_node = ExprNode(state.symbols["z"])
+        state.substitute(state.en.left, new_node)
+        result = state.to_sympy()
+        self.assertEqual(result, sp.sympify("z + y"))
+        for expr in expressions:
+            state = SympleState.from_sympy(expr)
+            new_node = ExprNode(state.symbols["w"])
+            state.substitute(state.en.left, new_node)
+            result = state.to_sympy()
+            self.assertNotEqual(result, expr)
+
+    def test_current_node(self):
+        expr = sp.sympify("x + y")
+        state = SympleState.from_sympy(expr)
+        self.assertEqual(state.current_node, state.en)
+        state.coord = (0,)
+        self.assertEqual(state.current_node, state.en.left)
+        for expr in expressions:
+            state = SympleState.from_sympy(expr)
+            self.assertEqual(state.current_node, state.en)
+
+    def test_substitute_current_node(self):
+        expr = sp.sympify("x + y")
+        state = SympleState.from_sympy(expr)
+        state.coord = (0,)
+        new_node = state.Expr_Node_from_sympy('z')
+        state.substitute_current_node(new_node)
+        result = state.to_sympy()
+        self.assertEqual(result, sp.sympify("z + y"))
+        for expr in expressions:
+            state = SympleState.from_sympy(expr)
+            state.coord = (0,)
+            new_node = state.Expr_Node_from_sympy('z')
+            state.substitute_current_node(new_node)
+            result = state.to_sympy()
+            self.assertNotEqual(result, expr)
+
+    def test_update(self):
+        expr = sp.sympify("x + y")
+        state = SympleState.from_sympy(expr)
+        state.update()
+        self.assertEqual(state.primary_state[0], state.en)
+        for expr in expressions:
+            state = SympleState.from_sympy(expr)
+            state.update()
+            self.assertEqual(state.primary_state[0], state.en)
+
+    def test_can_declare_symbol(self):
+        state = SympleState()
+        self.assertTrue(state.can_declare_symbol())
+        for expr in expressions:
+            state = SympleState.from_sympy(expr)
+            self.assertTrue(state.can_declare_symbol())
+
+    def test_declare_new_symbol(self):
+        expr = sp.sympify("x + y")
+        state = SympleState.from_sympy(expr)
+        state.coord = (0,)
+        state.declare_new_symbol("a")
+        self.assertIn("a", state.sub_states)
+        self.assertEqual(state.en.left.type, state.symbols["a"])
+        for expr in expressions:
+            state = SympleState.from_sympy(expr)
+            state.coord = (0,)
+            state.declare_new_symbol("a")
+            self.assertIn("a", state.sub_states)
+
+    def test_can_switch_to_sub_state(self):
+        expr = sp.sympify("x + y")
+        state = SympleState.from_sympy(expr)
+        state.coord = (0,)
+        state.declare_new_symbol("a")
+        self.assertTrue(state.can_switch_to_sub_state())
+        for expr in expressions:
+            state = SympleState.from_sympy(expr)
+            state.coord = (0,)
+            state.declare_new_symbol("a")
+            self.assertTrue(state.can_switch_to_sub_state())
+
+    def test_switch_to_sub_state(self):
+        expr = sp.sympify("x + y")
+        state = SympleState.from_sympy(expr)
+        state.declare_new_symbol("a")
+        state.switch_to_sub_state("a")
+        self.assertEqual(state.current_name, "a")
+        for expr in expressions:
+            state = SympleState.from_sympy(expr)
+            state.declare_new_symbol("a")
+            state.switch_to_sub_state("a")
+            self.assertEqual(state.current_name, "a")
+
+    def test_can_revert_to_primary_state(self):
+        expr = sp.sympify("x + y")
+        state = SympleState.from_sympy(expr)
+        state.declare_new_symbol("a")
+        state.switch_to_sub_state("a")
+        self.assertTrue(state.can_revert_to_primary_state())
+        for expr in expressions:
+            state = SympleState.from_sympy(expr)
+            state.declare_new_symbol("a")
+            state.switch_to_sub_state("a")
+            self.assertTrue(state.can_revert_to_primary_state())
+
+    def test_revert_to_primary_state(self):
+        expr = sp.sympify("x + y")
+        state = SympleState.from_sympy(expr)
+        state.declare_new_symbol("a")
+        state.switch_to_sub_state("a")
+        state.revert_to_primary_state()
+        self.assertIsNone(state.current_name)
+        for expr in expressions:
+            state = SympleState.from_sympy(expr)
+            state.declare_new_symbol("a")
+            state.switch_to_sub_state("a")
+            state.revert_to_primary_state()
+            self.assertIsNone(state.current_name)
+
+    def test_can_evaluate_symbol(self):
+        expr = sp.sympify("x + y")
+        state = SympleState.from_sympy(expr)
+        state.declare_new_symbol("a")
+        state.switch_to_sub_state("a")
+        self.assertTrue(state.can_evaluate_symbol())
+        for expr in expressions:
+            state = SympleState.from_sympy(expr)
+            state.declare_new_symbol("a")
+            state.switch_to_sub_state("a")
+            self.assertTrue(state.can_evaluate_symbol())
+
+    def test_evaluate_symbol(self):
+        expr = sp.sympify("x + y")
+        state = SympleState.from_sympy(expr)
+        state.declare_new_symbol("a")
+        state.switch_to_sub_state("a")
+        state.evaluate_symbol()
+        self.assertNotIn("a", state.sub_states)
+        for expr in expressions:
+            state = SympleState.from_sympy(expr)
+            state.declare_new_symbol("a")
+            state.switch_to_sub_state("a")
+            state.evaluate_symbol()
+            self.assertNotIn("a", state.sub_states)
+
+    def test_evaluate_all_symbols(self):
+        expr = sp.sympify("x + y")
+        state = SympleState.from_sympy(expr)
+        state.declare_new_symbol("a")
+        state.declare_new_symbol("b")
+        state.evaluate_all_symbols()
+        self.assertEqual(len(state.sub_states), 0)
+        for expr in expressions:
+            state = SympleState.from_sympy(expr)
+            state.declare_new_symbol("a")
+            state.declare_new_symbol("b")
+            state.evaluate_all_symbols()
+            self.assertEqual(len(state.sub_states), 0)
+
+    def test_finish(self):
+        expr = sp.sympify("x + y")
+        state = SympleState.from_sympy(expr)
+        state.declare_new_symbol("a")
+        state.finish()
+        self.assertEqual(len(state.sub_states), 0)
+        self.assertIsNone(state.en.hidden)
+        self.assertIsNone(state.en.cell)
+        for expr in expressions:
+            state = SympleState.from_sympy(expr)
+            state.declare_new_symbol("a")
+            state.finish()
+            self.assertEqual(len(state.sub_states), 0)
+            self.assertIsNone(state.en.hidden)
+            self.assertIsNone(state.en.cell)
+
+    def test_count_symbol(self):
+        expr = sp.sympify("x + x")
+        state = SympleState.from_sympy(expr)
+        count = state.count_symbol()
+        self.assertEqual(count, 1)
+        for expr in expressions:
+            state = SympleState.from_sympy(expr)
+            count = state.count_symbol()
+            self.assertIsInstance(count, int)
+    
+    def test_state_tensor(self):
+        expr = sp.sympify("x + y")
+        state = SympleState.from_sympy(expr)
+        
+        # Test initial state tensor
+        tensor = state.state_tensor
+        self.assertIsInstance(tensor, Tensor)
+        self.assertEqual(tensor.shape, (1, 8))  # 6 for action encoding, 2 for node counts
+        
+        # Test after an action
+        state.action_record.append(5)  # Append a dummy action
+        tensor = state.state_tensor
+        self.assertEqual(tensor[0, 4].item(), 1)  # Check if the action is encoded correctly
+        
+        # Test node counts
+        self.assertGreater(tensor[0, 6].item(), 0)  # Current node count
+        self.assertGreater(tensor[0, 7].item(), 0)  # Total node count
+        
+        # Test with a more complex expression
+        complex_expr = sp.sympify("(x + y)**2 - (x**2 + 2*x*y + y**2)")
+        complex_state = SympleState.from_sympy(complex_expr)
+        complex_tensor = complex_state.state_tensor
+        
+        self.assertGreater(complex_tensor[0, 7].item(), tensor[0, 7].item())  # More complex expression should have higher node count
+
+        for expr in expressions:
+            state = SympleState.from_sympy(expr)
+            tensor = state.state_tensor
+            self.assertIsInstance(tensor, Tensor)
+            self.assertEqual(tensor.shape, (1, 8))
+            self.assertGreaterEqual(tensor[0, 6].item(), 0)  # Current node count
+            self.assertGreater(tensor[0, 7].item(), 0)  # Total node count
+
+if __name__ == '__main__':
+    unittest.main()

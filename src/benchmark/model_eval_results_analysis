@@ -1,0 +1,110 @@
+import os
+import json
+import numpy as np
+import matplotlib.pyplot as plt
+
+from definitions import ROOT_DIR
+
+results_dir = os.path.join(ROOT_DIR, 'src', 'benchmark', 'results')
+
+# Get list of benchmark result files
+result_files = [f for f in os.listdir(results_dir) if f.startswith('benchmark_results_') and f.endswith('.json')]
+
+# Sort files by modification time, newest first
+result_files.sort(key=lambda x: os.path.getmtime(os.path.join(results_dir, x)))
+
+print("Available benchmark result files:")
+for i, file in enumerate(result_files):
+    print(f"{i+1}. {file}")
+
+while True:
+    choice = input("Enter the number of the file you want to analyze (or 'latest' for the most recent): ")
+    if choice.lower() == 'latest':
+        selected_file = result_files[-1]
+        break
+    elif choice.isdigit() and 1 <= int(choice) <= len(result_files):
+        selected_file = result_files[int(choice)-1]
+        break
+    else:
+        print("Invalid choice. Please try again.")
+
+# Load results from selected JSON file
+with open(os.path.join(results_dir, selected_file), 'r') as f:
+    results = json.load(f)
+
+print(f"Loaded results from: {selected_file}")
+
+n_attempts = len(results[0]['all_attempts'])
+
+# Create plots
+
+# Best NCR histogram
+best_ncr = [r['best_attempt']['ncr'] for r in results]
+mean_ncr = np.mean(best_ncr)
+std_ncr = np.std(best_ncr)
+
+plt.figure(figsize=(12, 6))
+plt.hist(best_ncr, bins=30)
+plt.axvline(mean_ncr, color='r', linestyle='dashed', linewidth=2)
+plt.title('Histogram of Best NCR for Each Expression')
+plt.xlabel(f'Node Count Reduction (NCR)\nMean: {mean_ncr:.2f}, Std: {std_ncr:.2f}')
+plt.ylabel('Frequency')
+plt.savefig(os.path.join(results_dir, 'best_ncr_histogram.png'))
+plt.close()
+
+# Best attmept evaluation time histogram
+best_eval_time = [r['best_attempt']['eval_time'] for r in results]
+mean_eval_time = np.mean(best_eval_time)
+std_eval_time = np.std(best_eval_time)
+
+plt.figure(figsize=(12, 6))
+plt.hist(best_eval_time, bins=30)
+plt.axvline(mean_eval_time, color='r', linestyle='dashed', linewidth=2)
+plt.title('Histogram of Evaluation Time for Best Attempts')
+plt.xlabel(f'Evaluation Time (seconds)\nMean: {mean_eval_time:.2f}, Std: {std_eval_time:.2f}')
+plt.ylabel('Frequency')
+plt.savefig(os.path.join(results_dir, 'best_eval_time_histogram.png'))
+plt.close()
+
+# NCR vs Evaluation Time scatter plot
+plt.figure(figsize=(12, 6))
+plt.scatter([r['best_attempt']['ncr'] for r in results], [r['best_attempt']['eval_time'] for r in results], alpha=0.5)
+plt.title('NCR vs Evaluation Time for Best Attempts')
+plt.xlabel('Node Count Reduction (NCR)')
+plt.ylabel('Evaluation Time (seconds)')
+plt.savefig(os.path.join(results_dir, 'ncr_vs_eval_time_scatter.png'))
+plt.close()
+
+# Calculate and plot average NCR and evaluation time across attempts
+avg_ncr = [sum([a['ncr'] for a in r['all_attempts']]) / n_attempts for r in results]
+std_ncr = [np.std([a['ncr'] for a in r['all_attempts']]) for r in results]
+avg_eval_time = [sum([a['eval_time'] for a in r['all_attempts']]) / n_attempts for r in results]
+std_eval_time = [np.std([a['eval_time'] for a in r['all_attempts']]) for r in results]
+
+mean_avg_ncr = np.mean(avg_ncr)
+mean_std_ncr = np.mean(std_ncr)
+std_avg_ncr = np.std(avg_ncr)
+
+plt.figure(figsize=(12, 6))
+plt.hist(avg_ncr, bins=30)
+plt.axvline(mean_avg_ncr, color='r', linestyle='dashed', linewidth=2)
+plt.title('Histogram of Average NCR Across Attempts')
+plt.xlabel(f'Average Node Count Reduction (NCR)\nMean: {mean_avg_ncr:.2f}, Mean Std: {mean_std_ncr:.2f}, Std: {std_avg_ncr:.2f}')
+plt.ylabel('Frequency')
+plt.savefig(os.path.join(results_dir, 'avg_ncr_histogram.png'))
+plt.close()
+
+mean_avg_eval_time = np.mean(avg_eval_time)
+mean_std_eval_time = np.mean(std_eval_time)
+std_avg_eval_time = np.std(avg_eval_time)
+
+plt.figure(figsize=(12, 6))
+plt.hist(avg_eval_time, bins=30)
+plt.axvline(mean_avg_eval_time, color='r', linestyle='dashed', linewidth=2)
+plt.title('Histogram of Average Evaluation Time Across Attempts')
+plt.xlabel(f'Average Evaluation Time (seconds)\nMean: {mean_avg_eval_time:.2f}, Mean Std: {mean_std_eval_time:.2f}, Std: {std_avg_eval_time:.2f}')
+plt.ylabel('Frequency')
+plt.savefig(os.path.join(results_dir, 'avg_eval_time_histogram.png'))
+plt.close()
+
+print("All plots have been saved in the 'benchmark/results' directory.")

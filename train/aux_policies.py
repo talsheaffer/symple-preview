@@ -1,22 +1,24 @@
 import torch
-from src.model.environment import Symple
+from src.model.model import SympleState
+from typing import Tuple
 
-def random_policy(env: Symple) -> torch.Tensor:
+def random_policy(state: SympleState, validity_mask: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     A random policy that returns equal probabilities for all valid actions.
     
     Args:
-    env (Symple): The Symple environment.
+    state (SympleState): The current state of the environment.
+    validity_mask (torch.Tensor): A tensor indicating the validity of external actions.
     
     Returns:
-    torch.Tensor: A tensor of probabilities for each action.
+    Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: Tensors of probabilities for high-level, external, and teleport actions.
     """
-    valid_actions = env.validity_mask.nonzero().squeeze()
-    num_valid_actions = valid_actions.size(0)
+    # High-level actions: external, teleport, finish
+    p_high = torch.ones((1,3), device=validity_mask.device) / 3
     
-    # Create a tensor of equal probabilities for valid actions
-    probs = torch.zeros_like(env.validity_mask, dtype=torch.float32)
-    probs[valid_actions] = 1.0 / num_valid_actions
+    p_ext = validity_mask[None, :].float() / validity_mask.sum()
     
-    return probs[None,:]
-
+    # Assuming teleport action is always valid for all nodes
+    p_teleport = torch.ones((1, state.en.node_count()), device=validity_mask.device) / state.en.node_count()
+    
+    return p_high, p_ext, p_teleport

@@ -15,6 +15,7 @@ fsspec==2024.9.0
 future @ file:///AppleInternal/Library/BuildRoots/860631e9-c1c5-11ee-98ee-b6ef2fd8d87b/Library/Caches/com.apple.xbs/Sources/python3/future-0.18.2-py3-none-any.whl
 importlib_metadata==8.4.0
 importlib_resources==6.4.5
+iniconfig==2.0.0
 ipykernel==6.29.5
 ipython==8.18.1
 jedi==0.19.1
@@ -36,18 +37,22 @@ parso==0.8.4
 pexpect==4.9.0
 pillow==10.4.0
 platformdirs==4.3.2
+pluggy==1.5.0
 prompt_toolkit==3.0.47
 psutil==6.0.0
 ptyprocess==0.7.0
 pure_eval==0.2.3
 Pygments==2.18.0
 pyparsing==3.1.4
+pytest==8.3.3
 python-dateutil==2.9.0.post0
 pytz==2024.1
+PyYAML==6.0.2
 pyzmq==26.2.0
 six @ file:///AppleInternal/Library/BuildRoots/860631e9-c1c5-11ee-98ee-b6ef2fd8d87b/Library/Caches/com.apple.xbs/Sources/python3/six-1.15.0-py2.py3-none-any.whl
 stack-data==0.6.3
 sympy==1.13.2
+tomli==2.0.1
 torch==2.4.1
 tornado==6.4.1
 traitlets==5.14.3

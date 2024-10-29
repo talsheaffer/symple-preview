@@ -84,7 +84,11 @@ The actions come in a few types:
 
 6. What are the atomic operations and how to combine them? 
 
-# Possible imporvements
+# Problems
+
+
+
+# To do
 
 1. global state information
 2. self attention
@@ -93,11 +97,14 @@ The actions come in a few types:
 5. Selection of nodes for special attention
 6. Modify LSTM - traditional LSTM might not be totally appropriate
 7. Include sympy operations (e.g. factor)
-8. replace embedding with one-hot
+8. ~~replace embedding with one-hot - done~~
 9. Separate data from structure
 10. Optimizations:
     * [TorchScript](https://medium.com/@hihuaweizhu/key-points-to-grasp-for-torchscript-beginners-c02cf94aaa50)
     * Torch compile
+11. Policy gradient - add baseline
+12. Gather more extensive history of agent actions
+13. Remove linear redundancy from FFN
 
 
 # Questions
@@ -135,3 +142,13 @@ $$
 + &  \sum_a  \rho(s, a) \frac{\pi(w, s, a)}{\rho(s, a)}  \left(\gamma \nabla_w \sum_{a'} \pi(w, a(s), a') Q_\pi(a(s), a') \right) \\
 \end{align*}
 $$
+
+# Value - based
+
+We could treat our logits as action-value estimates. Change in code is minimal. Temperature will have meaning on-policy.
+
+# Actor-Critic
+
+1. Estimate value function $V$. Then advantage function is $A(s, a) = V(a(s))+R(s, a) - V(s)$. Question - ins't the feature-extraction incentivized to minimize loss by "tricking" the critic? No, because we'll take gradients of log-probs, not of loss.
+2. Like NeureWriter - critic for "telport" / subexpression selection and actor for "act". Requires extensive change to current architecture.
+3. Critic for "high-level" action-values. Actor for "act" / "learn".
