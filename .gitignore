@@ -11,3 +11,7 @@ scratch.ipynb
 .vscode
 .ruff_cache/
 *.egg-info/
+src/benchmark/results/*.json
+train/figures/
+train/models/
+train/training_data

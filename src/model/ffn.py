@@ -4,15 +4,22 @@ from torch import Tensor
 
 
 class DenseBlock(nn.Module):
-    def __init__(self, input_size: int, output_size: int = None, dropout: float = 0.1):
+    def __init__(
+        self,
+        input_size: int,
+        output_size: int = None,
+        dropout: float = 0.1,
+        leaky_relu_slope: float = 0.01,
+    ):
         super().__init__()
         self.input_size = input_size
         self.output_size = output_size if output_size is not None else input_size
         self.linear = nn.Linear(self.input_size, self.output_size)
         self.dropout = dropout
+        self.leaky_relu_slope = leaky_relu_slope
 
     def forward(self, input: Tensor) -> Tensor:
-        x = F.relu(self.linear(input))
+        x = F.leaky_relu(self.linear(input), negative_slope=self.leaky_relu_slope)
         if self.training:
             x = F.dropout(x, p=self.dropout)
         return x
@@ -41,3 +48,11 @@ class FFN(nn.Module):
 
     def forward(self, x):
         return self.output(self.layers(self.input(x)))
+
+class FFN_V2(FFN):
+    def __init__(self, input_size: int, hidden_size: int, output_size: int, **kwargs):
+        super().__init__(input_size, hidden_size, output_size, **kwargs)
+        self.wide = nn.Linear(input_size, output_size, bias=False)
+
+    def forward(self, x):
+        return self.wide(x) + super(FFN_V2, self).forward(x)
