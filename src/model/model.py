@@ -4,7 +4,7 @@ from torch import nn
 
 from src.model.environment import NUM_OPS, Symple
 from src.model.state import SympleState, STATE_VECTOR_SIZE
-from src.model.ffn import FFN
+from src.model.ffn import FFN_V2
 from src.model.tree import VOCAB_SIZE, ExprNode
 from src.model.nary_tree_lstm import NaryTreeLSTM
 
@@ -88,13 +88,13 @@ class SympleAgent(nn.Module):
         self.blstm = NaryTreeLSTM(2, self.vocab_size, self.hidden_size)
         self.tlstm = NaryTreeLSTM(3, self.vocab_size, self.hidden_size)
         self.lstm = nn.LSTM(self.global_lstm_input_size, self.global_hidden_size, num_layers=lstm_n_layers, batch_first=True)
-        self.ffn = FFN(self.hidden_size, self.hidden_size, self.hidden_size, n_layers=ffn_n_layers)
+        self.ffn = FFN_V2(self.hidden_size, self.hidden_size, self.hidden_size, n_layers=ffn_n_layers)
 
         # FFNs for high-level and specific action Q-values
-        self.q_high = FFN(self.feature_size, self.ffn_hidden_size, 4, n_layers=ffn_n_layers)  # Changed to 4 for teleport and finish actions
-        self.q_teleport = FFN(self.feature_size, self.hidden_size, 1, n_layers=ffn_n_layers)
-        self.q_internal = FFN(self.feature_size, self.ffn_hidden_size, self.num_internal_ops, n_layers=ffn_n_layers)
-        self.q_external = FFN(self.feature_size, self.ffn_hidden_size, self.num_ops, n_layers=ffn_n_layers)
+        self.q_high = FFN_V2(self.feature_size, self.ffn_hidden_size, 4, n_layers=ffn_n_layers)  # Changed to 4 for teleport and finish actions
+        self.q_teleport = FFN_V2(self.feature_size, self.hidden_size, 1, n_layers=ffn_n_layers)
+        self.q_internal = FFN_V2(self.feature_size, self.ffn_hidden_size, self.num_internal_ops, n_layers=ffn_n_layers)
+        self.q_external = FFN_V2(self.feature_size, self.ffn_hidden_size, self.num_ops, n_layers=ffn_n_layers)
 
         # internal ops and their compute complexity. Including certain compositions of elementary internal ops
         self.ffn_complexity = self.hidden_size**2 * self.ffn.n_layers
